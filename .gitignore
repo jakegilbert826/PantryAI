@@ -1,0 +1,12 @@
+.DS_Store
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+xcuserdata/
+build/
+backend/pantry_store.json
+backend/__pycache__/
+backend/.venv/
+
+# JetBrains IDE
+.idea/

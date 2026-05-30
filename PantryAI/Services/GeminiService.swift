@@ -1,0 +1,277 @@
+import Foundation
+
+/// Talks to Gemini directly using the `generativelanguage.googleapis.com` REST
+/// API. The protocol means it can be swapped for a backend-routed variant
+/// later without touching call sites.
+final class GeminiService: GeminiServiceProtocol {
+    private let keychain = KeychainService()
+
+    // MARK: Scan (vision)
+
+    func scanInventory(imageData: Data) async throws -> [ScannedItem] {
+        let apiKey = try requireKey()
+        let url = AppConfig.geminiBaseURL
+            .appendingPathComponent("models/\(AppConfig.geminiModel):generateContent")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let prompt = Self.scanPrompt
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [
+                    ["text": prompt],
+                    ["inline_data": [
+                        "mime_type": "image/jpeg",
+                        "data": imageData.base64EncodedString(),
+                    ]]
+                ]
+            ]],
+            "generationConfig": [
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try ensureOK(resp, data)
+
+        let text = try extractText(from: data)
+        return try decodeScannedItems(from: text)
+    }
+
+    // MARK: Recipes
+
+    func generateRecipes(
+        inventory: [InventoryItem],
+        preferences: [RecipePreferenceSnapshot]
+    ) async throws -> [RecipeSuggestion] {
+        let apiKey = try requireKey()
+        let url = AppConfig.geminiBaseURL
+            .appendingPathComponent("models/\(AppConfig.geminiModel):generateContent")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let prompt = Self.recipePrompt(inventory: inventory, preferences: preferences)
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [["text": prompt]]
+            ]],
+            "generationConfig": [
+                "temperature": 0.6,
+                "responseMimeType": "application/json",
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try ensureOK(resp, data)
+        let text = try extractText(from: data)
+        return try decodeRecipes(from: text)
+    }
+
+    // MARK: Recipe detail (streaming)
+
+    func streamRecipeDetail(
+        recipe: String,
+        inventory: [InventoryItem]
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        let apiKey = try requireKey()
+        let url = AppConfig.geminiBaseURL
+            .appendingPathComponent("models/\(AppConfig.geminiModel):streamGenerateContent")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let prompt = Self.recipeDetailPrompt(recipe: recipe, inventory: inventory)
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [["text": prompt]]
+            ]],
+            "generationConfig": ["temperature": 0.5]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+        try ensureOK(resp, nil)
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    var buffer = ""
+                    for try await line in bytes.lines {
+                        // Gemini streams JSON objects, one per line in SSE-like form.
+                        // Each chunk contains `candidates[0].content.parts[0].text`.
+                        let trimmed = line.trimmingCharacters(in: .whitespaces)
+                        guard trimmed.hasPrefix("{") || trimmed.hasPrefix("[") || trimmed.hasPrefix(",") else { continue }
+                        let candidate = trimmed.hasPrefix(",") ? String(trimmed.dropFirst()) : trimmed
+                        buffer += candidate
+                        if let token = try? Self.parseStreamChunk(buffer) {
+                            buffer = ""
+                            continuation.yield(token)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    private func requireKey() throws -> String {
+        guard let key = keychain.get(.geminiAPIKey), !key.isEmpty else {
+            throw PantryError.missingAPIKey
+        }
+        return key
+    }
+
+    private func ensureOK(_ resp: URLResponse, _ data: Data?) throws {
+        guard let http = resp as? HTTPURLResponse else {
+            throw PantryError.network("no HTTP response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            throw PantryError.geminiRefused("HTTP \(http.statusCode) — \(body.prefix(200))")
+        }
+    }
+
+    private func extractText(from data: Data) throws -> String {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let candidates = json["candidates"] as? [[String: Any]],
+            let first = candidates.first,
+            let content = first["content"] as? [String: Any],
+            let parts = content["parts"] as? [[String: Any]],
+            let text = parts.first?["text"] as? String
+        else {
+            throw PantryError.decoding("Gemini response shape unexpected")
+        }
+        return text
+    }
+
+    private func decodeScannedItems(from text: String) throws -> [ScannedItem] {
+        let cleaned = stripCodeFences(text)
+        guard let data = cleaned.data(using: .utf8) else { throw PantryError.decoding("non-utf8") }
+        struct Raw: Decodable {
+            let name: String
+            let category: String
+            let brand: String?
+            let quantity: Double
+            let unit: String?
+            let confidence: Double
+        }
+        let raws = try JSONDecoder().decode([Raw].self, from: data)
+        return raws.map {
+            ScannedItem(
+                name: $0.name,
+                category: InventoryCategory(rawValue: $0.category) ?? .dryGoods,
+                brand: $0.brand,
+                quantity: $0.quantity,
+                unit: $0.unit,
+                confidence: $0.confidence
+            )
+        }
+    }
+
+    private func decodeRecipes(from text: String) throws -> [RecipeSuggestion] {
+        let cleaned = stripCodeFences(text)
+        guard let data = cleaned.data(using: .utf8) else { throw PantryError.decoding("non-utf8") }
+        return try JSONDecoder().decode([RecipeSuggestion].self, from: data)
+    }
+
+    private func stripCodeFences(_ text: String) -> String {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix("```") {
+            t = String(t.drop(while: { $0 != "\n" })).trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.hasSuffix("```") { t = String(t.dropLast(3)) }
+        }
+        return t
+    }
+
+    private static func parseStreamChunk(_ buffer: String) throws -> String? {
+        guard let data = buffer.data(using: .utf8) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let candidates = json["candidates"] as? [[String: Any]],
+           let content = candidates.first?["content"] as? [String: Any],
+           let parts = content["parts"] as? [[String: Any]],
+           let text = parts.first?["text"] as? String {
+            return text
+        }
+        return nil
+    }
+}
+
+// MARK: Prompts
+
+extension GeminiService {
+    static let scanPrompt = """
+    You are a kitchen inventory scanner. Analyse this image of a fridge/freezer/pantry shelf.
+
+    Return ONLY a JSON array with no markdown, no explanation. Each object must have:
+    {
+      "name": string,
+      "category": string,   // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
+      "brand": string | null,
+      "quantity": number,   // 1.0 = full/new, 0.5 = half used
+      "unit": string | null, // "g", "ml", "units", or null
+      "confidence": number  // your detection confidence 0.0–1.0
+    }
+
+    If you cannot identify an item with reasonable confidence, omit it rather than guess.
+    """
+
+    static func recipePrompt(inventory: [InventoryItem], preferences: [RecipePreferenceSnapshot]) -> String {
+        let inv = inventory.map {
+            [
+                "name": $0.name,
+                "category": $0.category.rawValue,
+                "confidence": $0.currentConfidence,
+                "quantity": $0.quantity,
+            ] as [String: Any]
+        }
+        let prefs = preferences.map {
+            ["name": $0.recipeName, "liked": $0.liked] as [String: Any]
+        }
+        let invJSON = (try? JSONSerialization.data(withJSONObject: inv)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let prefJSON = (try? JSONSerialization.data(withJSONObject: prefs)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        return """
+        You are a recipe assistant. The user's current pantry inventory (with confidence scores) is:
+        \(invJSON)
+
+        Their food preferences (liked/disliked): \(prefJSON)
+
+        Suggest 5 recipes they can make. Prioritise:
+        1. Recipes using items with low confidence (expiring soon)
+        2. Recipes matching their preferences
+        3. Recipes with the highest ingredient coverage from current inventory
+
+        Return ONLY a JSON array:
+        [{
+          "name": string,
+          "coveragePercent": number,
+          "missingIngredients": [string],
+          "requiredIngredients": [string]
+        }]
+        """
+    }
+
+    static func recipeDetailPrompt(recipe: String, inventory: [InventoryItem]) -> String {
+        let inv = inventory.map { "\($0.name) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ")
+        return """
+        Write a clear, concise recipe for "\(recipe)". Use what the user already has where possible: \(inv).
+        Format the response as markdown with a short intro, an ingredients list with quantities, and numbered steps.
+        Keep total time under 30 minutes if possible. Don't pad with culinary backstory.
+        """
+    }
+}

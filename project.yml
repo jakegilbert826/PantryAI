@@ -1,0 +1,96 @@
+name: PantryAI
+options:
+  bundleIdPrefix: ai.pantry
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+  configs:
+    Debug:
+      ENABLE_TESTABILITY: YES
+
+targets:
+  PantryAI:
+    type: application
+    platform: iOS
+    sources:
+      - path: PantryAI
+        excludes:
+          - "**/.DS_Store"
+    resources:
+      - PantryAI/Resources/Assets.xcassets
+    info:
+      path: PantryAI/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Pantry
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: AccentColor
+        UIRequiredDeviceCapabilities: [armv7]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Pantry uses the camera to scan your fridge, freezer, and pantry shelves so it can identify what you have.
+        NSPhotoLibraryAddUsageDescription: Pantry can save captured shelf photos for your scan history.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.pantry.PantryAI
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+
+  PantryAITests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PantryAITests
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - target: PantryAI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.pantry.PantryAITests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+
+  PantryAIUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: PantryAIUITests
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - target: PantryAI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.pantry.PantryAIUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: PantryAI
+
+schemes:
+  PantryAI:
+    build:
+      targets:
+        PantryAI: all
+        PantryAITests: [test]
+        PantryAIUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      coverageTargets:
+        - PantryAI
+      targets:
+        - PantryAITests
+        - PantryAIUITests
