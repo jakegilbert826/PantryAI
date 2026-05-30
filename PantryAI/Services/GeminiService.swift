@@ -81,8 +81,17 @@ final class GeminiService: GeminiServiceProtocol {
         inventory: [InventoryItem]
     ) async throws -> AsyncThrowingStream<String, Error> {
         let apiKey = try requireKey()
-        let url = AppConfig.geminiBaseURL
+        let baseURL = AppConfig.geminiBaseURL
             .appendingPathComponent("models/\(AppConfig.geminiModel):streamGenerateContent")
+        // Without `alt=sse` the streaming endpoint returns one big pretty-printed
+        // JSON array spread over many lines, which the line-based parser below
+        // cannot reassemble. `alt=sse` gives one complete JSON object per
+        // `data:` line instead.
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "alt", value: "sse")]
+        guard let url = components?.url else {
+            throw PantryError.network("could not build streaming URL")
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -103,16 +112,15 @@ final class GeminiService: GeminiServiceProtocol {
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    var buffer = ""
+                    // With `alt=sse` each event arrives as `data: {json}`, where
+                    // the JSON is one complete chunk holding
+                    // `candidates[0].content.parts[0].text`.
                     for try await line in bytes.lines {
-                        // Gemini streams JSON objects, one per line in SSE-like form.
-                        // Each chunk contains `candidates[0].content.parts[0].text`.
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        guard trimmed.hasPrefix("{") || trimmed.hasPrefix("[") || trimmed.hasPrefix(",") else { continue }
-                        let candidate = trimmed.hasPrefix(",") ? String(trimmed.dropFirst()) : trimmed
-                        buffer += candidate
-                        if let token = try? Self.parseStreamChunk(buffer) {
-                            buffer = ""
+                        guard line.hasPrefix("data:") else { continue }
+                        let payload = line.dropFirst("data:".count)
+                            .trimmingCharacters(in: .whitespaces)
+                        guard !payload.isEmpty else { continue }
+                        if let token = try? Self.parseStreamChunk(payload), !token.isEmpty {
                             continuation.yield(token)
                         }
                     }

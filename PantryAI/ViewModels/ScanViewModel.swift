@@ -6,13 +6,14 @@ import UIKit
 @Observable
 final class ScanViewModel {
     enum Stage {
+        case method      // "Add to your pantry" — pick a capture method
         case capturing
         case analysing
         case review
         case done
     }
 
-    var stage: Stage = .capturing
+    var stage: Stage = .method
     var captured: [Data] = []          // up to 6 photos
     var detected: [ScannedItem] = []
     var error: PantryError?
@@ -28,8 +29,19 @@ final class ScanViewModel {
 
     var canCaptureMore: Bool { captured.count < 6 }
 
+    /// How many more photos can still be added before hitting the 6-photo cap.
+    var remainingCapacity: Int { max(0, 6 - captured.count) }
+
+    /// "Photo" chosen on the Add screen — clear any prior session and open the camera.
+    func startPhotoCapture() {
+        captured = []
+        detected = []
+        error = nil
+        stage = .capturing
+    }
+
     func add(photo image: UIImage) {
-        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        guard canCaptureMore, let data = image.jpegData(compressionQuality: 0.8) else { return }
         captured.append(data)
     }
 
@@ -81,7 +93,7 @@ final class ScanViewModel {
     }
 
     func reset() {
-        stage = .capturing
+        stage = .method
         captured = []
         detected = []
         error = nil

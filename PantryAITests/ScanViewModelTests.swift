@@ -61,8 +61,20 @@ final class ScanViewModelTests: XCTestCase {
         XCTAssertEqual(vm.detected.first?.confidence, 0.9)
     }
 
+    func testInitialStageIsMethodPicker() {
+        XCTAssertEqual(makeVM().stage, .method)
+    }
+
+    func testStartPhotoCaptureMovesToCapturing() {
+        let vm = makeVM()
+        vm.startPhotoCapture()
+        XCTAssertEqual(vm.stage, .capturing)
+        XCTAssertTrue(vm.captured.isEmpty)
+    }
+
     func testAnalyseWithNoPhotosDoesNothing() async {
         let vm = makeVM()
+        vm.startPhotoCapture()
         await vm.analyse()
         XCTAssertEqual(vm.stage, .capturing)
         XCTAssertEqual(gemini.scanCallCount, 0)
@@ -122,7 +134,7 @@ final class ScanViewModelTests: XCTestCase {
         await vm.analyse()
         vm.reset()
 
-        XCTAssertEqual(vm.stage, .capturing)
+        XCTAssertEqual(vm.stage, .method)
         XCTAssertTrue(vm.captured.isEmpty)
         XCTAssertTrue(vm.detected.isEmpty)
         XCTAssertNil(vm.error)
