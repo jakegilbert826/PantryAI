@@ -1,9 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct RecipesView: View {
-    @Environment(\.modelContext) private var context
-    @State private var vm: RecipesViewModel?
+    let vm: RecipesViewModel
     @State private var selected: RecipeSuggestion?
 
     var body: some View {
@@ -11,14 +9,12 @@ struct RecipesView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 contextPill
-                if let vm {
-                    if vm.isLoading && vm.suggestions.isEmpty {
-                        loadingPlaceholder
-                    } else if vm.suggestions.isEmpty {
-                        emptyState(vm)
-                    } else {
-                        list(vm)
-                    }
+                if vm.isLoading && vm.suggestions.isEmpty {
+                    loadingPlaceholder
+                } else if vm.suggestions.isEmpty {
+                    emptyState
+                } else {
+                    list
                 }
                 Spacer(minLength: 120)
             }
@@ -26,15 +22,10 @@ struct RecipesView: View {
         }
         .background(Theme.bg)
         .onAppear {
-            if vm == nil {
-                vm = RecipesViewModel(context: context)
-                Task { await vm?.refresh() }
-            }
+            Task { await vm.refresh() }
         }
         .sheet(item: $selected) { recipe in
-            if let vm {
-                RecipeDetailView(recipe: recipe, vm: vm)
-            }
+            RecipeDetailView(recipe: recipe, vm: vm)
         }
     }
 
@@ -76,7 +67,7 @@ struct RecipesView: View {
     }
 
     @ViewBuilder
-    private func list(_ vm: RecipesViewModel) -> some View {
+    private var list: some View {
         VStack(spacing: 12) {
             ForEach(vm.suggestions) { recipe in
                 RecipeCard(recipe: recipe)
@@ -101,7 +92,7 @@ struct RecipesView: View {
         }
     }
 
-    private func emptyState(_ vm: RecipesViewModel) -> some View {
+    private var emptyState: some View {
         VStack(spacing: 14) {
             Mascot(size: 120)
             Text("Add some items first, then ask Pip what to cook.")
