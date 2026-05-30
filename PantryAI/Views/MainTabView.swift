@@ -41,7 +41,6 @@ private struct FloatingTabBar: View {
             tab(.recipes, system: "fork.knife")
             tab(.household, system: "person.2.fill")
         }
-        .accessibilityIdentifier("tabbar")
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
@@ -67,6 +66,7 @@ private struct FloatingTabBar: View {
                     Capsule(style: .continuous)
                         .fill(selection == kind ? Theme.ink : .clear)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("tab.\(kind)")

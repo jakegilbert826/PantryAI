@@ -19,35 +19,35 @@ final class NavigationUITests: XCTestCase {
 
     func testTabBarIsPresent() {
         let app = launchedApp()
-        XCTAssertTrue(app.buttons["tab.pantry"].exists)
-        XCTAssertTrue(app.buttons["tab.scan"].exists)
-        XCTAssertTrue(app.buttons["tab.recipes"].exists)
-        XCTAssertTrue(app.buttons["tab.household"].exists)
+        XCTAssertTrue(app.buttons["Pantry"].exists)
+        XCTAssertTrue(app.buttons["Scan"].exists)
+        XCTAssertTrue(app.buttons["Recipes"].exists)
+        XCTAssertTrue(app.buttons["Household"].exists)
     }
 
     func testNavigateToRecipes() {
         let app = launchedApp()
-        app.buttons["tab.recipes"].tapWhenReady()
+        app.buttons["Recipes"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Pip is cooking"].waitForExistence(timeout: 8))
     }
 
     func testNavigateToHouseholdSettings() {
         let app = launchedApp()
-        app.buttons["tab.household"].tapWhenReady()
+        app.buttons["Household"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 8))
     }
 
     func testNavigateBackToPantry() {
         let app = launchedApp()
-        app.buttons["tab.household"].tapWhenReady()
+        app.buttons["Household"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 8))
-        app.buttons["tab.pantry"].tapWhenReady()
+        app.buttons["Pantry"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["What's cooking?"].waitForExistence(timeout: 8))
     }
 
     func testNavigateToScanShowsCaptureScreen() {
         let app = launchedApp()
-        app.buttons["tab.scan"].tapWhenReady()
+        app.buttons["Scan"].tapWhenReady()
         // The simulator has no camera, so an init alert may appear — dismiss it.
         let cameraAlertOK = app.alerts.buttons["OK"]
         if cameraAlertOK.waitForExistence(timeout: 3) {

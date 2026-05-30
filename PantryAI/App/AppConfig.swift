@@ -17,7 +17,7 @@ enum AppConfig {
     /// Gemini model identifier. Swap to `gemini-2.0-pro` for higher-quality
     /// chat output. Vision routes always use a flash variant unless overridden.
     static var geminiModel: String {
-        UserDefaults.standard.string(forKey: Keys.geminiModel) ?? "gemini-2.0-flash"
+        UserDefaults.standard.string(forKey: Keys.geminiModel) ?? "gemini-3.1-flash-lite"
     }
 
     /// Direct Gemini endpoint (used when not routing through the backend).

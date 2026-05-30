@@ -112,8 +112,8 @@ struct SettingsView: View {
                 Text("Model")
                     .font(.system(size: 12, weight: .semibold))
                 Picker("Model", selection: Binding(get: { vm.geminiModel }, set: { vm.geminiModel = $0 })) {
-                    Text("gemini-2.0-flash").tag("gemini-2.0-flash")
-                    Text("gemini-2.0-pro").tag("gemini-2.0-pro")
+                    Text("gemini-3.1-flash-lite").tag("gemini-3.1-flash-lite")
+                    Text("gemini-2.0-pro").tag("gemini-2.0-pro") // TODO: remove
                 }
                 .pickerStyle(.segmented)
             }

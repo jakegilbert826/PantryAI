@@ -12,7 +12,7 @@ final class SettingsUITests: XCTestCase {
     private func openSettings() -> XCUIApplication {
         let app = XCUIApplication.pantry(["-skipOnboarding", "-resetDefaults"])
         app.launch()
-        app.buttons["tab.household"].tapWhenReady()
+        app.buttons["Household"].tapWhenReady()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 8))
         return app
     }
