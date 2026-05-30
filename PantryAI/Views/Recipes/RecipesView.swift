@@ -84,7 +84,7 @@ struct RecipesView: View {
             }
         }
         PillButton(title: "Generate more", icon: "sparkles", variant: .amber, size: .regular) {
-            Task { await vm.refresh() }
+            Task { await vm.refresh(force: true) }
         }
         .padding(.top, 8)
     }

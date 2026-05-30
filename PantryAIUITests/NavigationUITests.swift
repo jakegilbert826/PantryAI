@@ -45,9 +45,18 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What's cooking?"].waitForExistence(timeout: 8))
     }
 
-    func testNavigateToScanShowsCaptureScreen() {
+    func testNavigateToScanShowsAddMethodPicker() {
         let app = launchedApp()
         app.buttons["Scan"].tapWhenReady()
+        // Scan now opens the "Add to your pantry" method picker (STEP 1 OF 2).
+        XCTAssertTrue(app.staticTexts["STEP 1 OF 2"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["method.Photo"].exists)
+    }
+
+    func testPickingPhotoShowsCaptureScreen() {
+        let app = launchedApp()
+        app.buttons["Scan"].tapWhenReady()
+        app.buttons["method.Photo"].tapWhenReady()
         // The simulator has no camera, so an init alert may appear — dismiss it.
         let cameraAlertOK = app.alerts.buttons["OK"]
         if cameraAlertOK.waitForExistence(timeout: 3) {

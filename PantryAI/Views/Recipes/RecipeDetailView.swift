@@ -14,11 +14,7 @@ struct RecipeDetailView: View {
                 if text.isEmpty {
                     typingIndicator
                 } else {
-                    Text(text)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.ink)
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
+                    RecipeMarkdownView(markdown: text)
                 }
                 Spacer(minLength: 40)
             }
