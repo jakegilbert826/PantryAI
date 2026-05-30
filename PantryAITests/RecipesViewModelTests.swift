@@ -82,4 +82,51 @@ final class RecipesViewModelTests: XCTestCase {
         XCTAssertEqual(collected, "Heat the pan.")
         XCTAssertEqual(gemini.lastDetailRecipe, "Omelette")
     }
+
+    // MARK: - Caching
+
+    func testRefreshReturnsCachedSuggestionsWhenInventoryUnchanged() async throws {
+        gemini.recipeResult = [
+            RecipeSuggestion(name: "Pasta", coveragePercent: 80,
+                             missingIngredients: [], requiredIngredients: ["pasta"]),
+        ]
+        try seed([InventoryItem(name: "Pasta", category: .dryGoods, lastScanConfidence: 1.0)])
+        let vm = RecipesViewModel(context: context, gemini: gemini)
+
+        await vm.refresh()
+        XCTAssertEqual(gemini.recipeCallCount, 1)
+
+        await vm.refresh()
+        XCTAssertEqual(gemini.recipeCallCount, 1, "second refresh with unchanged inventory should use cache")
+        XCTAssertEqual(vm.suggestions.count, 1)
+    }
+
+    func testForceRefreshBypassesCache() async throws {
+        gemini.recipeResult = [
+            RecipeSuggestion(name: "Pasta", coveragePercent: 80,
+                             missingIngredients: [], requiredIngredients: ["pasta"]),
+        ]
+        try seed([InventoryItem(name: "Pasta", category: .dryGoods, lastScanConfidence: 1.0)])
+        let vm = RecipesViewModel(context: context, gemini: gemini)
+
+        await vm.refresh()
+        await vm.refresh(force: true)
+        XCTAssertEqual(gemini.recipeCallCount, 2, "force refresh must call Gemini even if inventory unchanged")
+    }
+
+    func testStreamDetailReturnsCachedTextOnSecondCall() async throws {
+        gemini.detailTokens = ["Step 1. ", "Step 2."]
+        let vm = RecipesViewModel(context: context, gemini: gemini)
+        let suggestion = RecipeSuggestion(name: "Omelette", coveragePercent: 100,
+                                          missingIngredients: [], requiredIngredients: [])
+
+        var first = ""
+        for try await token in try await vm.streamDetail(for: suggestion) { first += token }
+
+        var second = ""
+        for try await token in try await vm.streamDetail(for: suggestion) { second += token }
+
+        XCTAssertEqual(gemini.detailCallCount, 1, "second call for same recipe must not hit Gemini")
+        XCTAssertEqual(first, second)
+    }
 }

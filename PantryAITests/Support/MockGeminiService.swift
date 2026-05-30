@@ -17,6 +17,8 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
 
     // Captured inputs
     private(set) var scanCallCount = 0
+    private(set) var recipeCallCount = 0
+    private(set) var detailCallCount = 0
     private(set) var lastRecipeInventory: [InventoryItem] = []
     private(set) var lastRecipePreferences: [RecipePreferenceSnapshot] = []
     private(set) var lastDetailRecipe: String?
@@ -31,6 +33,7 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
         inventory: [InventoryItem],
         preferences: [RecipePreferenceSnapshot]
     ) async throws -> [RecipeSuggestion] {
+        recipeCallCount += 1
         lastRecipeInventory = inventory
         lastRecipePreferences = preferences
         if let recipeError { throw recipeError }
@@ -41,6 +44,7 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
         recipe: String,
         inventory: [InventoryItem]
     ) async throws -> AsyncThrowingStream<String, Error> {
+        detailCallCount += 1
         lastDetailRecipe = recipe
         if let detailError { throw detailError }
         let tokens = detailTokens
