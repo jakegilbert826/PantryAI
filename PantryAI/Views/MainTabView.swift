@@ -8,6 +8,7 @@ enum Tab: Hashable {
 struct MainTabView: View {
     @Environment(\.modelContext) private var context
     @State private var selection: Tab = .pantry
+    @State private var recipesVM: RecipesViewModel?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -18,13 +19,21 @@ struct MainTabView: View {
                 .padding(.bottom, 8)
         }
         .background(Theme.bg)
+        .onAppear {
+            if recipesVM == nil {
+                recipesVM = RecipesViewModel(context: context)
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
         switch selection {
         case .pantry:    PantryView()
         case .scan:      ScanView()
-        case .recipes:   RecipesView()
+        case .recipes:
+            if let vm = recipesVM {
+                RecipesView(vm: vm)
+            }
         case .household: SettingsView()
         }
     }

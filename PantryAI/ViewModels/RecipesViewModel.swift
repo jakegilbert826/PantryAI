@@ -16,10 +16,17 @@ final class RecipesViewModel {
     private var suggestionsCacheKey: String? = nil
     private var detailCache: [String: String] = [:]
 
+    private enum UDKeys {
+        static let suggestions = "recipes.suggestions"
+        static let cacheKey = "recipes.cacheKey"
+        static let detailCache = "recipes.detailCache"
+    }
+
     init(context: ModelContext, gemini: GeminiServiceProtocol = GeminiService()) {
         self.context = context
         self.gemini = gemini
         self.inventory = InventoryService(context: context)
+        loadFromDefaults()
     }
 
     func refresh(force: Bool = false) async {
@@ -39,7 +46,9 @@ final class RecipesViewModel {
                 inventory: basis,
                 preferences: prefs
             )
+            detailCache = [:]
             suggestionsCacheKey = fingerprint
+            saveToDefaults()
         } catch let err as PantryError {
             isLoading = false
             error = err
@@ -68,11 +77,36 @@ final class RecipesViewModel {
                         continuation.yield(chunk)
                     }
                     self?.detailCache[recipeName] = accumulated
+                    self?.saveToDefaults()
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+        }
+    }
+
+    private func loadFromDefaults() {
+        let ud = UserDefaults.standard
+        if let data = ud.data(forKey: UDKeys.suggestions),
+           let decoded = try? JSONDecoder().decode([RecipeSuggestion].self, from: data) {
+            suggestions = decoded
+        }
+        suggestionsCacheKey = ud.string(forKey: UDKeys.cacheKey)
+        if let data = ud.data(forKey: UDKeys.detailCache),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            detailCache = decoded
+        }
+    }
+
+    private func saveToDefaults() {
+        let ud = UserDefaults.standard
+        if let data = try? JSONEncoder().encode(suggestions) {
+            ud.set(data, forKey: UDKeys.suggestions)
+        }
+        ud.set(suggestionsCacheKey, forKey: UDKeys.cacheKey)
+        if let data = try? JSONEncoder().encode(detailCache) {
+            ud.set(data, forKey: UDKeys.detailCache)
         }
     }
 
