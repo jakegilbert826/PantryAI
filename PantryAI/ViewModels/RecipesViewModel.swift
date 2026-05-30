@@ -19,6 +19,7 @@ final class RecipesViewModel {
     private enum UDKeys {
         static let suggestions = "recipes.suggestions"
         static let cacheKey = "recipes.cacheKey"
+        static let detailCache = "recipes.detailCache"
     }
 
     init(context: ModelContext, gemini: GeminiServiceProtocol = GeminiService()) {
@@ -45,6 +46,7 @@ final class RecipesViewModel {
                 inventory: basis,
                 preferences: prefs
             )
+            detailCache = [:]
             suggestionsCacheKey = fingerprint
             saveToDefaults()
         } catch let err as PantryError {
@@ -75,6 +77,7 @@ final class RecipesViewModel {
                         continuation.yield(chunk)
                     }
                     self?.detailCache[recipeName] = accumulated
+                    self?.saveToDefaults()
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -90,6 +93,10 @@ final class RecipesViewModel {
             suggestions = decoded
         }
         suggestionsCacheKey = ud.string(forKey: UDKeys.cacheKey)
+        if let data = ud.data(forKey: UDKeys.detailCache),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            detailCache = decoded
+        }
     }
 
     private func saveToDefaults() {
@@ -98,6 +105,9 @@ final class RecipesViewModel {
             ud.set(data, forKey: UDKeys.suggestions)
         }
         ud.set(suggestionsCacheKey, forKey: UDKeys.cacheKey)
+        if let data = try? JSONEncoder().encode(detailCache) {
+            ud.set(data, forKey: UDKeys.detailCache)
+        }
     }
 
     private func inventoryFingerprint(_ items: [InventoryItem]) -> String {

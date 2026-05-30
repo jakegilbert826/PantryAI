@@ -10,6 +10,9 @@ final class RecipesViewModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        ["recipes.suggestions", "recipes.cacheKey", "recipes.detailCache"].forEach {
+            UserDefaults.standard.removeObject(forKey: $0)
+        }
         context = TestModelContainer.make()
         gemini = MockGeminiService()
         UserPreferences.shared.householdSize = 1
