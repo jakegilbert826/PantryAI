@@ -4,6 +4,7 @@ import Foundation
 /// to Gemini directly — both must satisfy this surface.
 protocol GeminiServiceProtocol {
     func scanInventory(imageData: Data) async throws -> [ScannedItem]
+    func scanReceipt(imageData: Data) async throws -> [ScannedItem]
     func generateRecipes(
         inventory: [InventoryItem],
         preferences: [RecipePreferenceSnapshot]

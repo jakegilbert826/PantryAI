@@ -13,7 +13,10 @@ final class ScanViewModel {
         case done
     }
 
+    enum CaptureMode { case photo, receipt }
+
     var stage: Stage = .method
+    var captureMode: CaptureMode = .photo
     var captured: [Data] = []          // up to 6 photos
     var detected: [ScannedItem] = []
     var error: PantryError?
@@ -34,6 +37,16 @@ final class ScanViewModel {
 
     /// "Photo" chosen on the Add screen — clear any prior session and open the camera.
     func startPhotoCapture() {
+        captureMode = .photo
+        captured = []
+        detected = []
+        error = nil
+        stage = .capturing
+    }
+
+    /// "Receipt" chosen on the Add screen — same camera flow, different Gemini prompt.
+    func startReceiptCapture() {
+        captureMode = .receipt
         captured = []
         detected = []
         error = nil
@@ -51,7 +64,10 @@ final class ScanViewModel {
         do {
             var all: [ScannedItem] = []
             for image in captured {
-                let scanned = try await gemini.scanInventory(imageData: image)
+                let scanned = switch captureMode {
+                case .photo:   try await gemini.scanInventory(imageData: image)
+                case .receipt: try await gemini.scanReceipt(imageData: image)
+                }
                 all.append(contentsOf: scanned)
             }
             detected = mergeDuplicates(all)
