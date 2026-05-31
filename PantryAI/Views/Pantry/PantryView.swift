@@ -16,10 +16,16 @@ struct PantryView: View {
                         .padding(.horizontal, 22)
                 }
                 if let vm {
-                    sectionHeader(count: vm.items.count)
+                    sectionHeader(count: vm.filteredItems.count)
                         .padding(.top, 16)
                         .padding(.horizontal, 22)
-                    grid(items: vm.items)
+                    searchBar(text: Binding(
+                        get: { vm.searchText },
+                        set: { vm.searchText = $0 }
+                    ))
+                    .padding(.horizontal, 22)
+                    .padding(.top, 12)
+                    grid(items: vm.filteredItems)
                         .padding(.horizontal, 22)
                         .padding(.top, 12)
                         .padding(.bottom, 120)
@@ -61,6 +67,46 @@ struct PantryView: View {
             }
             .padding(20)
         }
+    }
+
+    // MARK: search bar
+
+    private func searchBar(text: Binding<String>) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.ink3)
+            TextField("Search pantry…", text: text)
+                .font(.body(15))
+                .foregroundStyle(Theme.ink)
+                .tint(Theme.ink)
+                .submitLabel(.search)
+            if !text.wrappedValue.isEmpty {
+                Button {
+                    text.wrappedValue = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.ink3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .fill(Theme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
+        )
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                .fill(Theme.ink)
+                .offset(y: Theme.chunkyShadowOffset)
+        )
     }
 
     // MARK: section header

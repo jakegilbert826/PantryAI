@@ -5,6 +5,7 @@ import SwiftData
 @Observable
 final class PantryViewModel {
     var items: [InventoryItem] = []
+    var searchText: String = ""
     var isRefreshing = false
     var error: PantryError?
     var backendOffline = false
@@ -14,6 +15,11 @@ final class PantryViewModel {
     init(context: ModelContext) {
         self.service = InventoryService(context: context)
         load()
+    }
+
+    var filteredItems: [InventoryItem] {
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return items }
+        return items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     var hasLowItems: Bool {
