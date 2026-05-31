@@ -86,6 +86,11 @@ final class RecipesViewModel {
         }
     }
 
+    func streamChatRecipe(userPrompt: String) async throws -> AsyncThrowingStream<String, Error> {
+        let inv = try inventory.all()
+        return try await gemini.streamChatRecipe(userPrompt: userPrompt, inventory: inv)
+    }
+
     private func loadFromDefaults() {
         let ud = UserDefaults.standard
         if let data = ud.data(forKey: UDKeys.suggestions),

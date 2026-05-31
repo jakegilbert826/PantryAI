@@ -33,7 +33,7 @@ struct RecipesLandingView: View {
                     .buttonStyle(.plain)
 
                     NavigationLink {
-                        RecipeChatView()
+                        RecipeChatView(vm: vm)
                     } label: {
                         LandingCard(
                             title: "Recipe Chat",
