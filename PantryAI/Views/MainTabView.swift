@@ -32,7 +32,9 @@ struct MainTabView: View {
         case .scan:      ScanView()
         case .recipes:
             if let vm = recipesVM {
-                RecipesView(vm: vm)
+                NavigationStack {
+                    RecipesLandingView(vm: vm)
+                }
             }
         case .household: SettingsView()
         }

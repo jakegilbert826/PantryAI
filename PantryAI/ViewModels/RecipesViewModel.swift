@@ -16,10 +16,13 @@ final class RecipesViewModel {
     private var suggestionsCacheKey: String? = nil
     private var detailCache: [String: String] = [:]
 
+    private(set) var savedRecipes: [RecipeSuggestion] = []
+
     private enum UDKeys {
         static let suggestions = "recipes.suggestions"
         static let cacheKey = "recipes.cacheKey"
         static let detailCache = "recipes.detailCache"
+        static let savedRecipes = "recipes.savedRecipes"
     }
 
     init(context: ModelContext, gemini: GeminiServiceProtocol = GeminiService()) {
@@ -86,6 +89,24 @@ final class RecipesViewModel {
         }
     }
 
+    func toggleSave(_ recipe: RecipeSuggestion) {
+        if let idx = savedRecipes.firstIndex(where: { $0.name == recipe.name }) {
+            savedRecipes.remove(at: idx)
+        } else {
+            savedRecipes.append(recipe)
+        }
+        saveToDefaults()
+    }
+
+    func isSaved(_ recipe: RecipeSuggestion) -> Bool {
+        savedRecipes.contains(where: { $0.name == recipe.name })
+    }
+
+    func streamChatRecipe(userPrompt: String) async throws -> AsyncThrowingStream<String, Error> {
+        let inv = try inventory.all()
+        return try await gemini.streamChatRecipe(userPrompt: userPrompt, inventory: inv)
+    }
+
     private func loadFromDefaults() {
         let ud = UserDefaults.standard
         if let data = ud.data(forKey: UDKeys.suggestions),
@@ -97,6 +118,10 @@ final class RecipesViewModel {
            let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
             detailCache = decoded
         }
+        if let data = ud.data(forKey: UDKeys.savedRecipes),
+           let decoded = try? JSONDecoder().decode([RecipeSuggestion].self, from: data) {
+            savedRecipes = decoded
+        }
     }
 
     private func saveToDefaults() {
@@ -107,6 +132,9 @@ final class RecipesViewModel {
         ud.set(suggestionsCacheKey, forKey: UDKeys.cacheKey)
         if let data = try? JSONEncoder().encode(detailCache) {
             ud.set(data, forKey: UDKeys.detailCache)
+        }
+        if let data = try? JSONEncoder().encode(savedRecipes) {
+            ud.set(data, forKey: UDKeys.savedRecipes)
         }
     }
 

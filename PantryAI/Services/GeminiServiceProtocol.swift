@@ -12,6 +12,10 @@ protocol GeminiServiceProtocol {
         recipe: String,
         inventory: [InventoryItem]
     ) async throws -> AsyncThrowingStream<String, Error>
+    func streamChatRecipe(
+        userPrompt: String,
+        inventory: [InventoryItem]
+    ) async throws -> AsyncThrowingStream<String, Error>
 }
 
 struct RecipeSuggestion: Identifiable, Hashable, Codable {

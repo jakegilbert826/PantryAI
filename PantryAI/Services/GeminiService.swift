@@ -132,6 +132,57 @@ final class GeminiService: GeminiServiceProtocol {
         }
     }
 
+    // MARK: Chat recipe (streaming)
+
+    func streamChatRecipe(
+        userPrompt: String,
+        inventory: [InventoryItem]
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        let apiKey = try requireKey()
+        let baseURL = AppConfig.geminiBaseURL
+            .appendingPathComponent("models/\(AppConfig.geminiModel):streamGenerateContent")
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "alt", value: "sse")]
+        guard let url = components?.url else {
+            throw PantryError.network("could not build streaming URL")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let prompt = Self.chatRecipePrompt(userPrompt: userPrompt, inventory: inventory)
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [["text": prompt]]
+            ]],
+            "generationConfig": ["temperature": 0.7]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+        try ensureOK(resp, nil)
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:") else { continue }
+                        let payload = line.dropFirst("data:".count)
+                            .trimmingCharacters(in: .whitespaces)
+                        guard !payload.isEmpty else { continue }
+                        if let token = try? Self.parseStreamChunk(payload), !token.isEmpty {
+                            continuation.yield(token)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: Helpers
 
     private func requireKey() throws -> String {
@@ -271,6 +322,21 @@ extension GeminiService {
           "missingIngredients": [string],
           "requiredIngredients": [string]
         }]
+        """
+    }
+
+    static func chatRecipePrompt(userPrompt: String, inventory: [InventoryItem]) -> String {
+        let inv = inventory.isEmpty
+            ? "pantry is currently empty"
+            : inventory.map { "\($0.name) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ")
+        return """
+        You are Pip, a friendly kitchen assistant. The user's pantry contains: \(inv).
+
+        The user wants: "\(userPrompt)"
+
+        Create a recipe that matches their request, using pantry items where possible. If key items are missing, note what to buy.
+        Format as markdown: a short intro, an ingredients list with quantities, then numbered cooking steps.
+        Keep it practical and under 30 minutes where possible.
         """
     }
 
