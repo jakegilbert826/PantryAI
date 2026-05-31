@@ -47,7 +47,7 @@ struct RecipeChatView: View {
             .frame(maxWidth: .infinity)
             CircleIconButton(systemName: "ellipsis", background: Theme.amber) {}
         }
-        .padding(.top, 70)
+        .padding(.top, 16)
     }
 
     // MARK: Placeholder

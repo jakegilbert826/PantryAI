@@ -44,7 +44,7 @@ struct RecipesView: View {
             .frame(maxWidth: .infinity)
             CircleIconButton(systemName: "ellipsis", background: Theme.amber) {}
         }
-        .padding(.top, 70)
+        .padding(.top, 16)
     }
 
     private var contextPill: some View {
