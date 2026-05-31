@@ -9,7 +9,6 @@ struct RecipesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                contextPill
                 if vm.isLoading && vm.suggestions.isEmpty {
                     loadingPlaceholder
                 } else if vm.suggestions.isEmpty {
@@ -45,26 +44,6 @@ struct RecipesView: View {
             CircleIconButton(systemName: "ellipsis", background: Theme.amber) {}
         }
         .padding(.top, 16)
-    }
-
-    private var contextPill: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "leaf").foregroundStyle(Theme.ink)
-            Text("Using ")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.ink2)
-            + Text("low-confidence items").font(.system(size: 12, weight: .bold)).foregroundColor(Theme.ink)
-            Spacer()
-        }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: Theme.strokeWidth, dash: [4, 4]))
-                .foregroundStyle(Theme.ink)
-        )
     }
 
     @ViewBuilder
