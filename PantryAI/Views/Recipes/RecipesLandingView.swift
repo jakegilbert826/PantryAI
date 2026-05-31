@@ -4,63 +4,62 @@ struct RecipesLandingView: View {
     let vm: RecipesViewModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                VStack(spacing: 14) {
-                    NavigationLink {
-                        RecipesView(vm: vm)
-                    } label: {
-                        LandingCard(
-                            title: "Recipe Suggestions",
-                            description: "Recipes Pip picks based on your pantry",
-                            icon: "sparkles",
-                            accent: Theme.mint
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        SavedRecipesView(vm: vm)
-                    } label: {
-                        LandingCard(
-                            title: "Saved Recipes",
-                            description: "Your bookmarked recipes, ready to cook",
-                            icon: "heart.fill",
-                            accent: Theme.sky
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        RecipeChatView(vm: vm)
-                    } label: {
-                        LandingCard(
-                            title: "Recipe Chat",
-                            description: "Tell Pip exactly what you're craving",
-                            icon: "bubble.left.and.bubble.right.fill",
-                            accent: Theme.amber
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        LiveCookingView()
-                    } label: {
-                        LandingCard(
-                            title: "Live Cooking",
-                            description: "Step-by-step instructions with a built-in timer",
-                            icon: "timer",
-                            accent: Theme.lilac,
-                            comingSoon: true
-                        )
-                    }
-                    .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            VStack(spacing: 14) {
+                NavigationLink {
+                    RecipesView(vm: vm)
+                } label: {
+                    LandingCard(
+                        title: "Recipe Suggestions",
+                        description: "Recipes Pip picks based on your pantry",
+                        icon: "sparkles",
+                        accent: Theme.mint
+                    )
                 }
-                Spacer(minLength: 120)
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    SavedRecipesView(vm: vm)
+                } label: {
+                    LandingCard(
+                        title: "Saved Recipes",
+                        description: "Your bookmarked recipes, ready to cook",
+                        icon: "heart.fill",
+                        accent: Theme.sky
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    RecipeChatView(vm: vm)
+                } label: {
+                    LandingCard(
+                        title: "Recipe Chat",
+                        description: "Tell Pip exactly what you're craving",
+                        icon: "bubble.left.and.bubble.right.fill",
+                        accent: Theme.amber
+                    )
+                }
+                .buttonStyle(.plain)
+
+                NavigationLink {
+                    LiveCookingView()
+                } label: {
+                    LandingCard(
+                        title: "Live Cooking",
+                        description: "Step-by-step instructions with a built-in timer",
+                        icon: "timer",
+                        accent: Theme.lilac,
+                        comingSoon: true
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 22)
+            Spacer()
         }
+        .padding(.horizontal, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .navigationBarHidden(true)
         .onAppear {
