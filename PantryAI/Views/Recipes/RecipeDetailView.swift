@@ -45,7 +45,10 @@ struct RecipeDetailView: View {
                 DisplayText(text: recipe.name, size: 18, italic: true)
             }
             Spacer()
-            CircleIconButton(systemName: "heart", background: Theme.amber) {}
+            CircleIconButton(
+                systemName: vm.isSaved(recipe) ? "heart.fill" : "heart",
+                background: vm.isSaved(recipe) ? Theme.rose : Theme.amber
+            ) { vm.toggleSave(recipe) }
         }
     }
 
