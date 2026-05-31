@@ -12,7 +12,7 @@ struct ScanView: View {
             if let vm {
                 switch vm.stage {
                 case .method:    MethodStage(vm: vm)
-                case .capturing: CaptureStage(vm: vm)
+                case .capturing: Color.clear
                 case .analysing: AnalysingStage(vm: vm)
                 case .review:    ReviewStage(vm: vm)
                 case .done:      DoneStage(vm: vm)
@@ -22,6 +22,15 @@ struct ScanView: View {
             }
         }
         .background(Theme.bg)
+        .fullScreenCover(isPresented: Binding(
+            get: { vm?.stage == .capturing },
+            set: { _ in }
+        )) {
+            if let vm {
+                CaptureStage(vm: vm)
+                    .interactiveDismissDisabled()
+            }
+        }
     }
 }
 
@@ -219,12 +228,9 @@ private struct CaptureStage: View {
             CircleIconButton(systemName: "xmark", background: .white.opacity(0.1), foreground: .white) { vm.reset() }
                 .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
             Spacer()
-            CaptionText(text: vm.captureMode == .receipt ? "RECEIPT SCAN" : "PHOTO · FRIDGE", color: .white.opacity(0.7))
-            Spacer()
-            CircleIconButton(systemName: "bell", background: .white.opacity(0.1), foreground: .white) {}
         }
         .padding(.horizontal, 22)
-        .padding(.top, 70)
+        .padding(.top, 22)
     }
 
     private var bottomPanel: some View {
@@ -239,7 +245,6 @@ private struct CaptureStage: View {
                  : "Hold steady — tap shutter when ready. Up to 6 photos.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink2)
-                .padding(.bottom, 8)
 
             HStack(spacing: 14) {
                 CircleIconButton(systemName: "photo.on.rectangle", size: 44) {
@@ -264,20 +269,20 @@ private struct CaptureStage: View {
                 .buttonStyle(.plain)
                 .disabled(!vm.canCaptureMore)
                 Spacer()
-                PillButton(title: "Done", variant: .solid, size: .small) {
+                CircleIconButton(systemName: "arrow.right", size: 44) {
                     Task { await vm.analyse() }
                 }
-                .fixedSize()
                 .disabled(vm.captured.isEmpty)
                 .opacity(vm.captured.isEmpty ? 0.4 : 1)
             }
         }
         .padding(.horizontal, 22)
-        .padding(.top, 22)
-        .padding(.bottom, 44)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .background(
             UnevenRoundedRectangle(cornerRadii: .init(topLeading: 32, topTrailing: 32))
                 .fill(Theme.bg)
+                .ignoresSafeArea(edges: .bottom)
         )
     }
 }
