@@ -21,12 +21,12 @@ struct RecipesLandingView: View {
                     .buttonStyle(.plain)
 
                     NavigationLink {
-                        SavedRecipesView()
+                        SavedRecipesView(vm: vm)
                     } label: {
                         LandingCard(
                             title: "Saved Recipes",
                             description: "Your bookmarked recipes, ready to cook",
-                            icon: "bookmark.fill",
+                            icon: "heart.fill",
                             accent: Theme.sky
                         )
                     }
@@ -40,6 +40,19 @@ struct RecipesLandingView: View {
                             description: "Tell Pip exactly what you're craving",
                             icon: "bubble.left.and.bubble.right.fill",
                             accent: Theme.amber
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        LiveCookingView()
+                    } label: {
+                        LandingCard(
+                            title: "Live Cooking",
+                            description: "Step-by-step instructions with a built-in timer",
+                            icon: "timer",
+                            accent: Theme.lilac,
+                            comingSoon: true
                         )
                     }
                     .buttonStyle(.plain)
@@ -81,6 +94,7 @@ private struct LandingCard: View {
     let description: String
     let icon: String
     let accent: Color
+    var comingSoon: Bool = false
 
     var body: some View {
         ChunkyCard {
@@ -99,9 +113,24 @@ private struct LandingCard: View {
                     .frame(width: 72, height: 72)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.displayFallback(18, italic: true))
-                        .foregroundStyle(Theme.ink)
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.displayFallback(18, italic: true))
+                            .foregroundStyle(Theme.ink)
+                        if comingSoon {
+                            Text("SOON")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Theme.ink)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule(style: .continuous).fill(Theme.lilac)
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth)
+                                )
+                        }
+                    }
                     Text(description)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink2)

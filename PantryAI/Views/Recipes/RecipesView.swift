@@ -72,7 +72,7 @@ struct RecipesView: View {
     private var list: some View {
         VStack(spacing: 12) {
             ForEach(vm.suggestions) { recipe in
-                RecipeCard(recipe: recipe)
+                RecipeCard(recipe: recipe, isSaved: vm.isSaved(recipe), onSave: { vm.toggleSave(recipe) })
                     .onTapGesture { selected = recipe }
             }
         }

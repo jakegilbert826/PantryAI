@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RecipeCard: View {
     let recipe: RecipeSuggestion
+    var isSaved: Bool = false
+    var onSave: () -> Void = {}
 
     var body: some View {
         ChunkyCard(background: Theme.surface, radius: Theme.cardRadius) {
@@ -35,9 +37,25 @@ struct RecipeCard: View {
                 fromYourPantry
 
                 HStack(spacing: 8) {
-                    PillButton(title: "Start cooking", variant: .solid, size: .small) {}
-                    PillButton(title: "Save", variant: .ghost, size: .small) {}
-                        .fixedSize()
+                    NavigationLink {
+                        LiveCookingView(recipe: recipe)
+                    } label: {
+                        Text("Start cooking")
+                            .font(.displayFallback(13))
+                            .tracking(0.2)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity)
+                            .foregroundStyle(Theme.bg)
+                            .background(Capsule(style: .continuous).fill(Theme.ink))
+                    }
+                    .buttonStyle(.plain)
+
+                    CircleIconButton(
+                        systemName: isSaved ? "heart.fill" : "heart",
+                        background: isSaved ? Theme.rose : Theme.bg,
+                        foreground: isSaved ? Theme.ink : Theme.ink
+                    ) { onSave() }
                 }
             }
             .padding(14)
