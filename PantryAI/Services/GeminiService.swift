@@ -42,6 +42,39 @@ final class GeminiService: GeminiServiceProtocol {
         return try decodeScannedItems(from: text)
     }
 
+    func scanReceipt(imageData: Data) async throws -> [ScannedItem] {
+        let apiKey = try requireKey()
+        let url = AppConfig.geminiBaseURL
+            .appendingPathComponent("models/\(AppConfig.geminiModel):generateContent")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+
+        let body: [String: Any] = [
+            "contents": [[
+                "parts": [
+                    ["text": Self.receiptPrompt],
+                    ["inline_data": [
+                        "mime_type": "image/jpeg",
+                        "data": imageData.base64EncodedString(),
+                    ]]
+                ]
+            ]],
+            "generationConfig": [
+                "temperature": 0.1,
+                "responseMimeType": "application/json",
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try ensureOK(resp, data)
+
+        let text = try extractText(from: data)
+        return try decodeScannedItems(from: text)
+    }
+
     // MARK: Recipes
 
     func generateRecipes(
@@ -273,6 +306,25 @@ final class GeminiService: GeminiServiceProtocol {
 // MARK: Prompts
 
 extension GeminiService {
+    static let receiptPrompt = """
+    You are a grocery receipt parser. The image shows a paper or digital grocery receipt.
+
+    Extract all food and grocery items purchased. Skip non-food items (household supplies, fees, discounts, taxes, loyalty points).
+
+    Return ONLY a JSON array with no markdown, no explanation. Each object must have:
+    {
+      "name": string,           // clean product name, expand common abbreviations (e.g. "CHKN" → "Chicken", "ORG" → "Organic")
+      "category": string,       // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
+      "brand": string | null,   // brand if identifiable from the receipt line, otherwise null
+      "quantity": number,       // units purchased (e.g. 2 for a line showing "2 x ..."), default 1
+      "unit": string | null,    // "g", "ml", "units", "kg", "oz", "lb" or null
+      "confidence": number      // 0.0–1.0; lower if OCR text was unclear or abbreviation was ambiguous
+    }
+
+    If the same item appears more than once, merge and sum quantities.
+    If you cannot identify an item as food or grocery, omit it.
+    """
+
     static let scanPrompt = """
     You are a kitchen inventory scanner. Analyse this image of a fridge/freezer/pantry shelf.
 

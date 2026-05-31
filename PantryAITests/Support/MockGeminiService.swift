@@ -29,6 +29,12 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
         return scanResult
     }
 
+    func scanReceipt(imageData: Data) async throws -> [ScannedItem] {
+        scanCallCount += 1
+        if let scanError { throw scanError }
+        return scanResult
+    }
+
     func generateRecipes(
         inventory: [InventoryItem],
         preferences: [RecipePreferenceSnapshot]
@@ -46,6 +52,18 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
     ) async throws -> AsyncThrowingStream<String, Error> {
         detailCallCount += 1
         lastDetailRecipe = recipe
+        if let detailError { throw detailError }
+        let tokens = detailTokens
+        return AsyncThrowingStream { continuation in
+            for token in tokens { continuation.yield(token) }
+            continuation.finish()
+        }
+    }
+
+    func streamChatRecipe(
+        userPrompt: String,
+        inventory: [InventoryItem]
+    ) async throws -> AsyncThrowingStream<String, Error> {
         if let detailError { throw detailError }
         let tokens = detailTokens
         return AsyncThrowingStream { continuation in

@@ -35,7 +35,6 @@ struct RecipesView: View {
         HStack(spacing: 12) {
             CircleIconButton(systemName: "chevron.left") { dismiss() }
             VStack(alignment: .center, spacing: 2) {
-                CaptionText(text: "RECIPE CHAT")
                 HStack(spacing: 6) {
                     Circle().fill(Theme.fresh).frame(width: 8, height: 8)
                     Text("Pip is cooking")

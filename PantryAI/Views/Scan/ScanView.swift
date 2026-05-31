@@ -13,7 +13,7 @@ struct ScanView: View {
                 switch vm.stage {
                 case .method:    MethodStage(vm: vm)
                 case .capturing: CaptureStage(vm: vm)
-                case .analysing: AnalysingStage()
+                case .analysing: AnalysingStage(vm: vm)
                 case .review:    ReviewStage(vm: vm)
                 case .done:      DoneStage(vm: vm)
                 }
@@ -47,10 +47,10 @@ private struct MethodStage: View {
             VStack(spacing: 16) {
                 ForEach(CaptureMethod.allCases) { method in
                     MethodCard(method: method) {
-                        if method.isAvailable {
-                            vm.startPhotoCapture()
-                        } else {
-                            comingSoon = method.title
+                        switch method {
+                        case .receipt: vm.startReceiptCapture()
+                        case .photo:   vm.startPhotoCapture()
+                        default:       comingSoon = method.title
                         }
                     }
                 }
@@ -74,7 +74,7 @@ private enum CaptureMethod: Int, CaseIterable, Identifiable {
 
     var id: Int { rawValue }
     var number: String { String(format: "%02d", rawValue + 1) }
-    var isAvailable: Bool { self == .photo }
+    var isAvailable: Bool { self == .photo || self == .receipt }
 
     var title: String {
         switch self {
@@ -219,7 +219,7 @@ private struct CaptureStage: View {
             CircleIconButton(systemName: "xmark", background: .white.opacity(0.1), foreground: .white) { vm.reset() }
                 .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
             Spacer()
-            CaptionText(text: "PHOTO · FRIDGE", color: .white.opacity(0.7))
+            CaptionText(text: vm.captureMode == .receipt ? "RECEIPT SCAN" : "PHOTO · FRIDGE", color: .white.opacity(0.7))
             Spacer()
             CircleIconButton(systemName: "bell", background: .white.opacity(0.1), foreground: .white) {}
         }
@@ -230,11 +230,13 @@ private struct CaptureStage: View {
     private var bottomPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                DisplayText(text: "Found \(vm.captured.count) photos", size: 26, italic: true)
+                DisplayText(text: "Found \(vm.captured.count) \(vm.captureMode == .receipt ? "receipt\(vm.captured.count == 1 ? "" : "s")" : "photo\(vm.captured.count == 1 ? "" : "s")")", size: 26, italic: true)
                 Spacer()
                 CaptionText(text: "LIVE")
             }
-            Text("Hold steady — tap shutter when ready. Up to 6 photos.")
+            Text(vm.captureMode == .receipt
+                 ? "Lay the receipt flat — tap shutter when ready."
+                 : "Hold steady — tap shutter when ready. Up to 6 photos.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink2)
                 .padding(.bottom, 8)
@@ -283,14 +285,16 @@ private struct CaptureStage: View {
 // MARK: analysing
 
 private struct AnalysingStage: View {
+    let vm: ScanViewModel
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
             Ring(percentage: 0.7, size: 80, stroke: 8, color: Theme.ink, track: Theme.border)
                 .rotationEffect(.degrees(360))
                 .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: UUID())
-            DisplayText(text: "Reading the shelf…", size: 24, italic: true)
-            Text("Gemini Vision is identifying items.")
+            DisplayText(text: vm.captureMode == .receipt ? "Reading the receipt…" : "Reading the shelf…", size: 24, italic: true)
+            Text(vm.captureMode == .receipt ? "Gemini is parsing your grocery items." : "Gemini Vision is identifying items.")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.ink2)
             Spacer()
