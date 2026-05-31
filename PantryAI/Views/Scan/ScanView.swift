@@ -35,32 +35,30 @@ private struct MethodStage: View {
     @State private var comingSoon: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(text: "STEP 1 OF 2")
-                    DisplayText(text: "Add to\nyour pantry", size: 32, italic: true)
-                    Text("Pick how you're capturing — every method lands in the same review pane.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.ink2)
-                }
-                .padding(.top, 70)
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                DisplayText(text: "Add to\nyour pantry", size: 48, italic: true)
+                Text("Pick how you're capturing — every method lands in the same review pane.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.ink2)
+            }
+            .padding(.top, 16)
 
-                VStack(spacing: 16) {
-                    ForEach(CaptureMethod.allCases) { method in
-                        MethodCard(method: method) {
-                            if method.isAvailable {
-                                vm.startPhotoCapture()
-                            } else {
-                                comingSoon = method.title
-                            }
+            VStack(spacing: 16) {
+                ForEach(CaptureMethod.allCases) { method in
+                    MethodCard(method: method) {
+                        if method.isAvailable {
+                            vm.startPhotoCapture()
+                        } else {
+                            comingSoon = method.title
                         }
                     }
                 }
-                .padding(.bottom, 120)
             }
-            .padding(.horizontal, 22)
+            Spacer()
         }
+        .padding(.horizontal, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .alert("Coming soon", isPresented: Binding(get: { comingSoon != nil }, set: { _ in comingSoon = nil })) {
             Button("OK") {}
