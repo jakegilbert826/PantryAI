@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecipesView: View {
     let vm: RecipesViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var selected: RecipeSuggestion?
 
     var body: some View {
@@ -21,6 +22,7 @@ struct RecipesView: View {
             .padding(.horizontal, 22)
         }
         .background(Theme.bg)
+        .navigationBarHidden(true)
         .onAppear {
             Task { await vm.refresh() }
         }
@@ -31,7 +33,7 @@ struct RecipesView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            CircleIconButton(systemName: "chevron.left") {}
+            CircleIconButton(systemName: "chevron.left") { dismiss() }
             VStack(alignment: .center, spacing: 2) {
                 CaptionText(text: "RECIPE CHAT")
                 HStack(spacing: 6) {
