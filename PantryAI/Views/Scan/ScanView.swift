@@ -37,13 +37,12 @@ private struct MethodStage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 8) {
-                CaptionText(text: "STEP 1 OF 2")
-                DisplayText(text: "Add to\nyour pantry", size: 32, italic: true)
+                DisplayText(text: "Add to\nyour pantry", size: 48, italic: true)
                 Text("Pick how you're capturing — every method lands in the same review pane.")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.ink2)
             }
-            .padding(.top, 70)
+            .padding(.top, 16)
 
             VStack(spacing: 16) {
                 ForEach(CaptureMethod.allCases) { method in

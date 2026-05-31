@@ -32,11 +32,8 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            CaptionText(text: "HOUSEHOLD")
-            DisplayText(text: "Settings", size: 36, italic: true)
-        }
-        .padding(.top, 70)
+        DisplayText(text: "Settings", size: 48, italic: true)
+            .padding(.top, 16)
     }
 
     private func householdCard(_ vm: SettingsViewModel) -> some View {

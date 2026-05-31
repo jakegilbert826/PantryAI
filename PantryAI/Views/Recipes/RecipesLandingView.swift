@@ -68,23 +68,8 @@ struct RecipesLandingView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Theme.amber)
-                Circle().stroke(Theme.ink, lineWidth: Theme.strokeWidth)
-                Text("P")
-                    .font(.displayFallback(20, italic: true))
-                    .foregroundStyle(Theme.ink)
-            }
-            .frame(width: 44, height: 44)
-
-            VStack(alignment: .leading, spacing: 2) {
-                CaptionText(text: "PIP'S KITCHEN")
-                DisplayText(text: "What are we making?", size: 22)
-            }
-            Spacer()
-        }
-        .padding(.top, 70)
+        DisplayText(text: "What's cooking, good looking?", size: 32)
+            .padding(.top, 16)
     }
 }
 
