@@ -2,7 +2,8 @@ import Foundation
 import SwiftData
 
 /// Single place that knows how to read/write inventory. Wraps SwiftData and
-/// optionally syncs with the FastAPI backend. ViewModels only see structs.
+/// optionally syncs with the FastAPI backend. Deletion is soft — items are
+/// hidden by setting `removedAt` rather than being permanently erased.
 @MainActor
 final class InventoryService {
     private let context: ModelContext
@@ -15,76 +16,88 @@ final class InventoryService {
     // MARK: Reads
 
     func all() throws -> [InventoryItem] {
-        let descriptor = FetchDescriptor<InventoryItemRecord>(
+        let descriptor = FetchDescriptor<InventoryItem>(
+            predicate: #Predicate { $0.removedAt == nil },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        return try context.fetch(descriptor).map { $0.toStruct() }
+        return try context.fetch(descriptor)
     }
 
     func grouped() throws -> [StorageLocation: [InventoryItem]] {
-        try Dictionary(grouping: all(), by: { $0.category.location })
+        try Dictionary(grouping: all(), by: { $0.storageLocation })
     }
 
     // MARK: Writes
 
-    /// Insert or update items from a confirmed scan. Matches by case-folded name.
+    /// Insert or update items from a confirmed scan. Matches by case-folded name
+    /// against active (non-removed) items.
     func upsert(_ items: [InventoryItem]) throws {
-        let descriptor = FetchDescriptor<InventoryItemRecord>()
-        let existing = try context.fetch(descriptor)
-
+        let existing = try context.fetch(
+            FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.removedAt == nil })
+        )
         for item in items {
-            if let match = existing.first(where: { $0.name.caseInsensitiveCompare(item.name) == .orderedSame }) {
-                match.apply(item)
+            if let match = existing.first(where: {
+                $0.name.caseInsensitiveCompare(item.name) == .orderedSame
+            }) {
+                match.brandName = item.brandName
+                match.foodCategory = item.foodCategory
+                match.packagingCategory = item.packagingCategory
+                match.storageLocation = item.storageLocation
+                match.measureType = item.measureType
+                match.measureValue = item.measureValue
+                match.measureUnit = item.measureUnit
+                match.measureConfidence = item.measureConfidence
+                match.informationSource = item.informationSource
+                match.lastScannedAt = item.lastScannedAt ?? .now
+                match.updatedAt = .now
             } else {
-                let record = InventoryItemRecord(
-                    id: item.id,
-                    name: item.name,
-                    category: item.category,
-                    brand: item.brand,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    lastScanConfidence: item.lastScanConfidence,
-                    lastScanDate: item.lastScanDate,
-                    decayModelOverride: item.decayModelOverride,
-                    imageURL: item.imageURL
-                )
-                context.insert(record)
+                context.insert(item)
             }
         }
         try context.save()
     }
 
     func delete(id: UUID) throws {
-        let descriptor = FetchDescriptor<InventoryItemRecord>(predicate: #Predicate { $0.id == id })
-        if let record = try context.fetch(descriptor).first {
-            context.delete(record)
+        let descriptor = FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.id == id })
+        if let item = try context.fetch(descriptor).first {
+            item.removedAt = .now
+            item.removalReason = .consumed
+            item.updatedAt = .now
             try context.save()
         }
     }
 
     func delete(name: String) throws {
         let lower = name.lowercased()
-        let descriptor = FetchDescriptor<InventoryItemRecord>()
-        let records = try context.fetch(descriptor)
-        var deleted = false
-        for record in records where record.name.lowercased() == lower {
-            context.delete(record)
-            deleted = true
+        let descriptor = FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.removedAt == nil })
+        var changed = false
+        for item in try context.fetch(descriptor) where item.name.lowercased() == lower {
+            item.removedAt = .now
+            item.removalReason = .consumed
+            item.updatedAt = .now
+            changed = true
         }
-        if deleted { try context.save() }
+        if changed { try context.save() }
     }
 
-    func logUsage(itemID: UUID, quantityUsed: Double, source: UsageEvent.Source = .manual) throws {
-        let descriptor = FetchDescriptor<InventoryItemRecord>(predicate: #Predicate { $0.id == itemID })
-        guard let record = try context.fetch(descriptor).first else { return }
-        let event = UsageEventRecord(itemID: itemID, quantityUsed: quantityUsed, source: source)
-        record.usageHistory.append(event)
-        record.updatedAt = .now
+    func logUsage(itemID: UUID, quantityUsed: Double, source: LogSource = .manual) throws {
+        let descriptor = FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.id == itemID })
+        guard let item = try context.fetch(descriptor).first else { return }
+        let log = ItemQuantityLog(
+            measureType: item.measureType,
+            measureValue: quantityUsed,
+            measureUnit: item.measureUnit,
+            measureConfidence: item.measureConfidence,
+            source: source
+        )
+        context.insert(log)
+        item.quantityLog.append(log)
+        item.updatedAt = .now
         try context.save()
     }
 
     func clearAll() throws {
-        try context.delete(model: InventoryItemRecord.self)
+        try context.delete(model: InventoryItem.self)
         try context.save()
     }
 
@@ -93,7 +106,7 @@ final class InventoryService {
     func pullFromBackend() async {
         do {
             let remote = try await network.get("/api/v1/inventory", as: [BackendInventoryItem].self)
-            let items = remote.map { $0.toStruct() }
+            let items = remote.map { $0.toModel() }
             try upsert(items)
         } catch {
             // Backend offline → silently keep the cached SwiftData copy.
@@ -107,45 +120,42 @@ final class InventoryService {
 }
 
 /// Wire-format mirror for the FastAPI endpoint. Kept separate from the local
-/// SwiftData record so the two can evolve independently.
+/// SwiftData model so the two can evolve independently.
 struct BackendInventoryItem: Codable {
     var id: UUID
     var name: String
-    var category: String
-    var brand: String?
-    var quantity: Double
-    var unit: String?
-    var lastScanConfidence: Double
-    var lastScanDate: Date
-    var decayModelOverride: String?
-    var imageURL: String?
+    var foodCategory: String
+    var brandName: String?
+    var measureValue: Double?
+    var measureUnit: String
+    var measureConfidence: Double
+    var lastScannedAt: Date?
+    var decayRateOverride: Double?
 
     init(from item: InventoryItem) {
         self.id = item.id
         self.name = item.name
-        self.category = item.category.rawValue
-        self.brand = item.brand
-        self.quantity = item.quantity
-        self.unit = item.unit
-        self.lastScanConfidence = item.lastScanConfidence
-        self.lastScanDate = item.lastScanDate
-        self.decayModelOverride = item.decayModelOverride
-        self.imageURL = item.imageURL
+        self.foodCategory = item.foodCategory.rawValue
+        self.brandName = item.brandName
+        self.measureValue = item.measureValue
+        self.measureUnit = item.measureUnit.rawValue
+        self.measureConfidence = item.measureConfidence
+        self.lastScannedAt = item.lastScannedAt
+        self.decayRateOverride = item.decayRateOverride
     }
 
-    func toStruct() -> InventoryItem {
+    func toModel() -> InventoryItem {
         InventoryItem(
             id: id,
             name: name,
-            category: InventoryCategory(rawValue: category) ?? .dryGoods,
-            brand: brand,
-            quantity: quantity,
-            unit: unit,
-            lastScanConfidence: lastScanConfidence,
-            lastScanDate: lastScanDate,
-            decayModelOverride: decayModelOverride,
-            usageHistory: [],
-            imageURL: imageURL
+            brandName: brandName,
+            foodCategory: FoodCategory(rawValue: foodCategory) ?? .dryGoods,
+            measureValue: measureValue,
+            measureUnit: MeasureUnit(rawValue: measureUnit) ?? .unit,
+            measureConfidence: measureConfidence,
+            decayRateOverride: decayRateOverride,
+            informationSource: .manual,
+            lastScannedAt: lastScannedAt
         )
     }
 }

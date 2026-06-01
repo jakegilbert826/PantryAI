@@ -61,7 +61,7 @@ final class MockGeminiService: GeminiServiceProtocol, @unchecked Sendable {
     }
 
     func streamChatRecipe(
-        userPrompt: String,
+        history: [ChatTurn],
         inventory: [InventoryItem]
     ) async throws -> AsyncThrowingStream<String, Error> {
         if let detailError { throw detailError }

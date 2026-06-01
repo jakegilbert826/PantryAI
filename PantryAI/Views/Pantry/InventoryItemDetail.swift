@@ -10,8 +10,8 @@ struct InventoryItemDetail: View {
 
     init(item: InventoryItem) {
         self.item = item
-        _quantity = State(initialValue: item.quantity)
-        _location = State(initialValue: item.category.location)
+        _quantity = State(initialValue: item.measureValue ?? 1.0)
+        _location = State(initialValue: item.storageLocation)
     }
 
     var body: some View {
@@ -27,12 +27,12 @@ struct InventoryItemDetail: View {
 
     private var hero: some View {
         ZStack {
-            item.category.cardColor
+            item.foodCategory.cardColor
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     CircleIconButton(systemName: "chevron.left") { dismiss() }
                     Spacer()
-                    CaptionText(text: item.category.displayName.uppercased(), color: Theme.ink2)
+                    CaptionText(text: item.foodCategory.displayName.uppercased(), color: Theme.ink2)
                     Spacer()
                     CircleIconButton(systemName: "ellipsis") {}
                 }
@@ -42,7 +42,7 @@ struct InventoryItemDetail: View {
                 VStack(alignment: .leading, spacing: 6) {
                     DisplayText(text: item.name, size: 40, italic: true)
                         .multilineTextAlignment(.leading)
-                    Text("\(item.brand ?? item.category.displayName) · \(item.category.location.displayName.lowercased())")
+                    Text("\(item.brandName ?? item.foodCategory.displayName) · \(item.storageLocation.displayName.lowercased())")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink2)
                 }
@@ -89,9 +89,7 @@ struct InventoryItemDetail: View {
                 HStack {
                     CaptionText(text: "AMOUNT")
                     Spacer()
-                    if let unit = item.unit {
-                        CaptionText(text: unit.uppercased())
-                    }
+                    CaptionText(text: item.measureUnit.rawValue.uppercased())
                 }
                 .padding(.bottom, 12)
 
@@ -122,7 +120,7 @@ struct InventoryItemDetail: View {
 
             VStack(spacing: 2) {
                 DisplayText(text: quantityLabel, size: 36, italic: true)
-                Text(item.unit ?? "remaining")
+                Text(item.measureUnit.rawValue)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.ink2)
             }
@@ -344,13 +342,14 @@ struct InventoryItemDetail: View {
 
     private var daysLeftEstimate: Int {
         let model = item.decayModel
+        let scanDate = item.lastScannedAt ?? item.addedAt
         for day in 0...60 {
-            let pretendScanDate = item.lastScanDate.addingTimeInterval(-Double(day) * 86_400)
+            let pretendScanDate = scanDate.addingTimeInterval(-Double(day) * 86_400)
             let projected = model.confidence(
-                lastScanConfidence: item.lastScanConfidence,
+                lastScanConfidence: item.measureConfidence,
                 lastScanDate: pretendScanDate,
                 householdSize: UserPreferences.shared.householdSize,
-                usageHistory: item.usageHistory
+                usageHistory: item.quantityLog
             )
             if projected < 0.05 { return day }
         }
@@ -358,7 +357,8 @@ struct InventoryItemDetail: View {
     }
 
     private var relativeScanDate: String {
-        let days = max(0, Calendar.current.dateComponents([.day], from: item.lastScanDate, to: .now).day ?? 0)
+        let ref = item.lastScannedAt ?? item.addedAt
+        let days = max(0, Calendar.current.dateComponents([.day], from: ref, to: .now).day ?? 0)
         return days == 0 ? "today" : "\(days)d ago"
     }
 
@@ -366,10 +366,10 @@ struct InventoryItemDetail: View {
 
     private var derivedSources: [DerivedSource] {
         var sources: [DerivedSource] = []
-        if item.usageHistory.contains(where: { $0.source == .manual }) {
+        if item.quantityLog.contains(where: { $0.source == .manual }) {
             sources.append(.init(icon: "hand.tap", label: "You, in app", when: ""))
         }
-        if item.usageHistory.contains(where: { $0.source == .recipeCooked }) {
+        if item.quantityLog.contains(where: { $0.source == .usageLog }) {
             sources.append(.init(icon: "frying.pan", label: "Recipe cooked", when: ""))
         }
         return sources

@@ -11,8 +11,8 @@ struct PantryAIApp: App {
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            InventoryItemRecord.self,
-            UsageEventRecord.self,
+            InventoryItem.self,
+            ItemQuantityLog.self,
             RecipePreference.self,
             ScanSession.self,
         ])

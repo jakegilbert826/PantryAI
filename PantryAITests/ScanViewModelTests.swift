@@ -43,12 +43,12 @@ final class ScanViewModelTests: XCTestCase {
 
     func testAnalyseMovesToReviewAndMergesDuplicates() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.6),
-            ScannedItem(name: "eggs", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.9), // dup, higher conf
-            ScannedItem(name: "Milk", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.8),
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.6),
+            ScannedItem(name: "eggs", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.9),
+            ScannedItem(name: "Milk", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.8),
         ]
         let vm = makeVM()
         vm.add(photo: solidImage())
@@ -56,7 +56,6 @@ final class ScanViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.stage, .review)
         XCTAssertEqual(vm.detected.count, 2, "duplicate name should be merged")
-        // Highest-confidence read of the duplicate is kept, and list is sorted.
         XCTAssertEqual(vm.detected.first?.name.lowercased(), "eggs")
         XCTAssertEqual(vm.detected.first?.confidence, 0.9)
     }
@@ -92,8 +91,8 @@ final class ScanViewModelTests: XCTestCase {
 
     func testToggleFlipsInclusion() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.9),
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()
         vm.add(photo: solidImage())
@@ -106,15 +105,14 @@ final class ScanViewModelTests: XCTestCase {
 
     func testCommitWritesIncludedItemsToInventory() async throws {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.9),
-            ScannedItem(name: "Spam", category: .meat, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.5),
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.9),
+            ScannedItem(name: "Spam", foodCategory: .meat, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.5),
         ]
         let vm = makeVM()
         vm.add(photo: solidImage())
         await vm.analyse()
-        // Exclude the second detection before committing.
         vm.toggle(vm.detected[1])
         vm.commit()
 
@@ -126,8 +124,8 @@ final class ScanViewModelTests: XCTestCase {
 
     func testResetClearsState() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", category: .dairy, brand: nil,
-                        quantity: 1, unit: nil, confidence: 0.9),
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+                        measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()
         vm.add(photo: solidImage())

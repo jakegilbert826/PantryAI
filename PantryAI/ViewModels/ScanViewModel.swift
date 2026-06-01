@@ -32,10 +32,8 @@ final class ScanViewModel {
 
     var canCaptureMore: Bool { captured.count < 6 }
 
-    /// How many more photos can still be added before hitting the 6-photo cap.
     var remainingCapacity: Int { max(0, 6 - captured.count) }
 
-    /// "Photo" chosen on the Add screen — clear any prior session and open the camera.
     func startPhotoCapture() {
         captureMode = .photo
         captured = []
@@ -44,7 +42,6 @@ final class ScanViewModel {
         stage = .capturing
     }
 
-    /// "Receipt" chosen on the Add screen — same camera flow, different Gemini prompt.
     func startReceiptCapture() {
         captureMode = .receipt
         captured = []
@@ -91,12 +88,14 @@ final class ScanViewModel {
         let items: [InventoryItem] = included.map {
             InventoryItem(
                 name: $0.name,
-                category: $0.category,
-                brand: $0.brand,
-                quantity: $0.quantity,
-                unit: $0.unit,
-                lastScanConfidence: $0.confidence,
-                lastScanDate: .now
+                brandName: $0.brandName,
+                foodCategory: $0.foodCategory,
+                measureType: MeasureType.from($0.measureUnit),
+                measureValue: $0.measureValue,
+                measureUnit: $0.measureUnit,
+                measureConfidence: $0.confidence,
+                informationSource: .pantryScan,
+                lastScannedAt: .now
             )
         }
         do {
@@ -115,16 +114,12 @@ final class ScanViewModel {
         error = nil
     }
 
-    /// If Gemini surfaces the same item across multiple frames, keep the
-    /// highest-confidence read rather than double-counting.
     private func mergeDuplicates(_ items: [ScannedItem]) -> [ScannedItem] {
         var keyed: [String: ScannedItem] = [:]
         for item in items {
             let key = item.name.lowercased()
             if let existing = keyed[key] {
-                if item.confidence > existing.confidence {
-                    keyed[key] = item
-                }
+                if item.confidence > existing.confidence { keyed[key] = item }
             } else {
                 keyed[key] = item
             }

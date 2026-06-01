@@ -27,7 +27,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Fried Rice", coveragePercent: 90,
                              missingIngredients: [], requiredIngredients: ["rice"]),
         ]
-        try seed([InventoryItem(name: "Rice", category: .dryGoods, lastScanConfidence: 1.0)])
+        try seed([InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
         await vm.refresh()
 
@@ -47,16 +47,15 @@ final class RecipesViewModelTests: XCTestCase {
 
     func testPreferExpiringSoonSortsInventoryByAscendingConfidence() async throws {
         try seed([
-            InventoryItem(name: "Fresh", category: .dryGoods,
-                          lastScanConfidence: 1.0, lastScanDate: .now),
-            InventoryItem(name: "Expiring", category: .freshProduce,
-                          lastScanConfidence: 1.0, lastScanDate: .daysAgo(10)),
+            InventoryItem(name: "Fresh", foodCategory: .dryGoods,
+                          measureConfidence: 1.0, lastScannedAt: .now),
+            InventoryItem(name: "Expiring", foodCategory: .freshProduce,
+                          measureConfidence: 1.0, lastScannedAt: .daysAgo(10)),
         ])
         let vm = RecipesViewModel(context: context, gemini: gemini)
         vm.preferExpiringSoon = true
         await vm.refresh()
 
-        // The mock records the inventory ordering it received.
         XCTAssertEqual(gemini.lastRecipeInventory.first?.name, "Expiring",
             "lowest-confidence item should be sent first")
     }
@@ -93,7 +92,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Pasta", coveragePercent: 80,
                              missingIngredients: [], requiredIngredients: ["pasta"]),
         ]
-        try seed([InventoryItem(name: "Pasta", category: .dryGoods, lastScanConfidence: 1.0)])
+        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods, measureConfidence: 1.0)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
 
         await vm.refresh()
@@ -109,7 +108,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Pasta", coveragePercent: 80,
                              missingIngredients: [], requiredIngredients: ["pasta"]),
         ]
-        try seed([InventoryItem(name: "Pasta", category: .dryGoods, lastScanConfidence: 1.0)])
+        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods, measureConfidence: 1.0)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
 
         await vm.refresh()
