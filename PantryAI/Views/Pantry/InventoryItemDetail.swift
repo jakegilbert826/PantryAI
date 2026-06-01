@@ -1,18 +1,23 @@
 import SwiftUI
-import Charts
-import SwiftData
 
 struct InventoryItemDetail: View {
     let item: InventoryItem
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
 
+    @State private var quantity: Double
+    @State private var location: StorageLocation
+
+    init(item: InventoryItem) {
+        self.item = item
+        _quantity = State(initialValue: item.quantity)
+        _location = State(initialValue: item.category.location)
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                hero
-                content
-            }
+        VStack(spacing: 0) {
+            hero
+            bodyContent
         }
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
@@ -21,137 +26,320 @@ struct InventoryItemDetail: View {
     // MARK: hero
 
     private var hero: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
             item.category.cardColor
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     CircleIconButton(systemName: "chevron.left") { dismiss() }
                     Spacer()
-                    CaptionText(text: "\(item.category.displayName.uppercased()) · \(item.category.location.displayName.uppercased())", color: Theme.ink2)
+                    CaptionText(text: item.category.displayName.uppercased(), color: Theme.ink2)
                     Spacer()
                     CircleIconButton(systemName: "ellipsis") {}
                 }
-                .padding(.top, 70)
+                .padding(.top, 56)
                 .padding(.horizontal, 22)
 
-                HStack(alignment: .bottom, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        DisplayText(text: item.name, size: 44, italic: true)
-                            .multilineTextAlignment(.leading)
-                        Text("\(item.brand ?? item.category.displayName) · opened \(daysSinceScan)d ago")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.ink2)
-                    }
-                    Spacer(minLength: 0)
-                    Ring(percentage: item.currentConfidence, size: 70, stroke: 7)
+                VStack(alignment: .leading, spacing: 6) {
+                    DisplayText(text: item.name, size: 40, italic: true)
+                        .multilineTextAlignment(.leading)
+                    Text("\(item.brand ?? item.category.displayName) · \(item.category.location.displayName.lowercased())")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.ink2)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 22)
-                .padding(.top, 22)
-                .padding(.bottom, 22)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
             }
         }
-        .background(item.category.cardColor)
         .overlay(
-            UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 32, bottomTrailing: 32))
+            UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 28, bottomTrailing: 28))
                 .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
         )
-        .clipShape(UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 32, bottomTrailing: 32)))
+        .clipShape(UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 28, bottomTrailing: 28)))
     }
 
-    // MARK: content
+    // MARK: body
 
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                DisplayText(text: "How it's aging", size: 19)
-                Spacer()
-                CaptionText(text: "30 DAYS")
+    private var bodyContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            amountCard
+            HStack(alignment: .top, spacing: 12) {
+                useByCard
+                confidenceCard
             }
-            decayChart
-            HStack(spacing: 10) {
-                statCard(label: "USE BY", value: "~ \(daysLeftEstimate) days", color: Theme.mint)
-                statCard(label: "CONFIDENCE", value: "\(Int(item.currentConfidence * 100))%", color: Theme.sky)
+            locationCard
+            sourcesCard
+            if item.isLow {
+                lowStockBanner
             }
+            Spacer()
             PillButton(title: "Find recipes using this", icon: "arrow.right", variant: .solid) {}
-                .padding(.top, 4)
-            Spacer(minLength: 40)
         }
         .padding(.horizontal, 22)
-        .padding(.top, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 28)
     }
 
-    private var decayChart: some View {
-        let points = decayProjection()
-        return ChunkyCard(background: Theme.surface, radius: Theme.cardRadius) {
-            VStack(alignment: .leading, spacing: 8) {
-                Chart {
-                    ForEach(points, id: \.day) { p in
-                        AreaMark(
-                            x: .value("Day", p.day),
-                            y: .value("Confidence", p.confidence)
-                        )
-                        .foregroundStyle(Theme.amber.opacity(0.4))
-                        LineMark(
-                            x: .value("Day", p.day),
-                            y: .value("Confidence", p.confidence)
-                        )
-                        .foregroundStyle(Theme.ink)
-                        .lineStyle(.init(lineWidth: 2.5))
-                    }
-                    PointMark(
-                        x: .value("Day", 0),
-                        y: .value("Confidence", item.currentConfidence)
-                    )
-                    .foregroundStyle(item.category.cardColor)
-                    .symbolSize(120)
-                }
-                .chartYScale(domain: 0...1)
-                .chartXAxis(.hidden)
-                .chartYAxis(.hidden)
-                .frame(height: 130)
+    // MARK: amount card
 
+    private var amountCard: some View {
+        ChunkyCard(background: Theme.surface, shadowOffset: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("OPENED")
+                    CaptionText(text: "AMOUNT")
                     Spacer()
-                    Text("TODAY").foregroundStyle(Theme.ink).bold()
-                    Spacer()
-                    Text("WK 2")
-                    Spacer()
-                    Text("WK 3")
-                    Spacer()
-                    Text("SPOILED")
+                    if let unit = item.unit {
+                        CaptionText(text: unit.uppercased())
+                    }
                 }
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.2)
-                .foregroundStyle(Theme.ink3)
+                .padding(.bottom, 12)
+
+                amountStepper
+                    .padding(.bottom, 14)
+
+                Divider()
+                    .padding(.bottom, 12)
+
+                presetChips
             }
             .padding(16)
         }
     }
 
-    private func statCard(label: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            CaptionText(text: label, color: Theme.ink2)
-            Text(value)
-                .font(.displayFallback(24, italic: true))
+    private var amountStepper: some View {
+        HStack(spacing: 14) {
+            Button {
+                quantity = max(0, quantity - 0.25)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.bg))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+            }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 2) {
+                DisplayText(text: quantityLabel, size: 36, italic: true)
+                Text(item.unit ?? "remaining")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.ink2)
+            }
+            .frame(maxWidth: .infinity)
+
+            Button {
+                quantity = min(1, quantity + 0.25)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.bg)
+                    .frame(width: 44, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.ink))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var presetChips: some View {
+        HStack(spacing: 8) {
+            presetChip("Half left", danger: false) { quantity = 0.5 }
+            presetChip("Almost gone", danger: false) { quantity = 0.1 }
+            presetChip("Used it all", danger: true) { quantity = 0 }
+        }
+    }
+
+    @ViewBuilder
+    private func presetChip(_ label: String, danger: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.displayFallback(13))
                 .foregroundStyle(Theme.ink)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity)
+                .background(Capsule(style: .continuous).fill(danger ? Color.clear : Theme.surface))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(style: danger
+                            ? StrokeStyle(lineWidth: Theme.strokeWidth, dash: [5, 3])
+                            : StrokeStyle(lineWidth: Theme.strokeWidth))
+                        .foregroundStyle(Theme.ink)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: 2-up stat cards
+
+    private var useByCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            CaptionText(text: "USE BY")
+            DisplayText(text: "~ \(daysLeftEstimate) days", size: 26, italic: true)
+                .padding(.vertical, 4)
+            freshnessBar
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.mint))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+    }
+
+    private var freshnessBar: some View {
+        let pct = item.currentConfidence
+        let fill: Color = pct > 0.6 ? Theme.mint : pct > 0.3 ? Theme.amber : Theme.rose
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.bg)
+                Capsule()
+                    .fill(fill)
+                    .frame(width: max(0, geo.size.width * CGFloat(pct)))
+            }
+            .overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+        }
+        .frame(height: 12)
+    }
+
+    private var confidenceCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            CaptionText(text: "CONFIDENCE")
+            DisplayText(text: "\(Int(item.currentConfidence * 100))%", size: 26, italic: true)
+                .padding(.vertical, 4)
+            Text("Best guess from \(sourceCount) source\(sourceCount == 1 ? "" : "s")")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.ink2)
+                .lineLimit(2)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.sky))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+    }
+
+    // MARK: location card
+
+    private var locationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            CaptionText(text: "STORED IN")
+            locationControl
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.surface))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+    }
+
+    private var locationControl: some View {
+        HStack(spacing: 6) {
+            ForEach(StorageLocation.allCases) { loc in
+                let selected = loc == location
+                Button { location = loc } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: locationIcon(loc))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selected ? Theme.bg : Theme.ink)
+                        Text(loc.displayName)
+                            .font(.displayFallback(11))
+                            .foregroundStyle(selected ? Theme.bg : Theme.ink2)
+                    }
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(selected ? Theme.ink : Color.clear))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(5)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(color)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.bg)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
-        )
+    }
+
+    private func locationIcon(_ loc: StorageLocation) -> String {
+        switch loc {
+        case .fridge:  return "refrigerator"
+        case .freezer: return "snowflake"
+        case .pantry:  return "archivebox"
+        }
+    }
+
+    // MARK: sources card
+
+    private var sourcesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            CaptionText(text: "WHERE THIS CAME FROM")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
+                    ForEach(derivedSources, id: \.label) { src in
+                        sourceChip(icon: src.icon, label: src.label, when: src.when)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.surface))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+    }
+
+    private func sourceChip(icon: String, label: String, when: String) -> some View {
+        HStack(spacing: 7) {
+            ZStack {
+                Circle()
+                    .fill(Theme.surface)
+                    .overlay(Circle().stroke(Theme.ink, lineWidth: 1))
+                    .frame(width: 22, height: 22)
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            if !when.isEmpty {
+                Text("·")
+                    .foregroundStyle(Theme.ink3)
+                Text(when)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink3)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.leading, 8)
+        .padding(.trailing, 12)
+        .background(Capsule().fill(Theme.bg).overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth)))
+    }
+
+    // MARK: low stock banner
+
+    private var lowStockBanner: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                CaptionText(text: "RUNNING LOW")
+                Text("Only \(quantityLabel) left — top up?")
+                    .font(.displayFallback(14))
+                    .foregroundStyle(Theme.ink)
+            }
+            Spacer()
+            PillButton(title: "Add to list", icon: "plus", variant: .solid, size: .small) {}
+                .fixedSize()
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.amber))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.ink).offset(y: 4))
     }
 
     // MARK: derived
 
-    private var daysSinceScan: Int {
-        max(0, Calendar.current.dateComponents([.day], from: item.lastScanDate, to: .now).day ?? 0)
+    private var quantityLabel: String {
+        if quantity >= 1.0 { return "Full" }
+        if quantity >= 0.75 { return "¾" }
+        if quantity >= 0.5 { return "½" }
+        if quantity >= 0.25 { return "¼" }
+        return "Empty"
     }
 
     private var daysLeftEstimate: Int {
@@ -169,22 +357,23 @@ struct InventoryItemDetail: View {
         return 30
     }
 
-    private struct ProjectedPoint { let day: Int; let confidence: Double }
-
-    private func decayProjection() -> [ProjectedPoint] {
-        // The decay model is `f(lastScanConfidence, lastScanDate, now)`. To
-        // project `offset` days into the future, we shift the scan date that
-        // many days into the past instead — same elapsed delta.
-        let model = item.decayModel
-        return (0...30).map { offset in
-            let pretendScanDate = item.lastScanDate.addingTimeInterval(-Double(offset) * 86_400)
-            let conf = model.confidence(
-                lastScanConfidence: item.lastScanConfidence,
-                lastScanDate: pretendScanDate,
-                householdSize: UserPreferences.shared.householdSize,
-                usageHistory: item.usageHistory
-            )
-            return ProjectedPoint(day: offset, confidence: conf)
-        }
+    private var relativeScanDate: String {
+        let days = max(0, Calendar.current.dateComponents([.day], from: item.lastScanDate, to: .now).day ?? 0)
+        return days == 0 ? "today" : "\(days)d ago"
     }
+
+    private struct DerivedSource { let icon: String; let label: String; let when: String }
+
+    private var derivedSources: [DerivedSource] {
+        var sources: [DerivedSource] = []
+        if item.usageHistory.contains(where: { $0.source == .manual }) {
+            sources.append(.init(icon: "hand.tap", label: "You, in app", when: ""))
+        }
+        if item.usageHistory.contains(where: { $0.source == .recipeCooked }) {
+            sources.append(.init(icon: "frying.pan", label: "Recipe cooked", when: ""))
+        }
+        return sources
+    }
+
+    private var sourceCount: Int { 1 + derivedSources.count }
 }
