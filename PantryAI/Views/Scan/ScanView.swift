@@ -96,10 +96,10 @@ private enum CaptureMethod: Int, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .receipt: return "Snap a paper receipt — we read it."
+        case .receipt: return "Snap a paper receipt."
         case .photo:   return "Shoot a shelf or drawer."
-        case .video:   return "Slow-pan for dense, packed storage."
-        case .email:   return "Sync grocery orders from your inbox."
+        case .video:   return "Slow-pan of dense pantry."
+        case .email:   return "Sync orders from your inbox."
         }
     }
 

@@ -10,10 +10,42 @@ struct RecipeChatView: View {
     @State private var sessions: [ChatSession] = []
     @State private var currentSessionId = UUID()
     @State private var showingRecents = false
+    @State private var showingIdlePrompt = false
 
     private let sessionsKey = "chat.sessions"
+    private let lastActivityKey = "chat.lastActivityDate"
+    private let idleThreshold: TimeInterval = 600
 
     var body: some View {
+        ZStack {
+            mainContent
+                .blur(radius: showingIdlePrompt ? 8 : 0)
+                .allowsHitTesting(!showingIdlePrompt)
+
+            if showingIdlePrompt {
+                idleOverlay
+            }
+        }
+        .background(Theme.bg)
+        .navigationBarHidden(true)
+        .onAppear { loadSessions() }
+        .onDisappear {
+            saveCurrentSession()
+            UserDefaults.standard.set(Date.now, forKey: lastActivityKey)
+        }
+        .sheet(isPresented: $showingRecents) {
+            RecentsSheet(sessions: sessions) { session in
+                restoreSession(session)
+                showingRecents = false
+            } onDelete: { session in
+                deleteSession(session)
+            }
+        }
+    }
+
+    // MARK: Main content
+
+    private var mainContent: some View {
         VStack(spacing: 0) {
             header
                 .padding(.horizontal, 22)
@@ -31,18 +63,41 @@ struct RecipeChatView: View {
                 .padding(.horizontal, 22)
                 .padding(.bottom, 100)
         }
-        .background(Theme.bg)
-        .navigationBarHidden(true)
-        .onAppear { loadSessions() }
-        .onDisappear { saveCurrentSession() }
-        .sheet(isPresented: $showingRecents) {
-            RecentsSheet(sessions: sessions) { session in
-                restoreSession(session)
-                showingRecents = false
-            } onDelete: { session in
-                deleteSession(session)
+    }
+
+    // MARK: Idle overlay
+
+    private var idleOverlay: some View {
+        VStack(spacing: 14) {
+            Button {
+                withAnimation(.spring(duration: 0.3)) { showingIdlePrompt = false }
+            } label: {
+                Text("Continue")
+                    .font(.displayFallback(18))
+                    .foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+                    .background(Capsule().fill(Theme.amber))
+                    .overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth))
             }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.spring(duration: 0.3)) { showingIdlePrompt = false }
+                startNewChat()
+            } label: {
+                Text("New Chat")
+                    .font(.displayFallback(18))
+                    .foregroundStyle(Theme.bg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+                    .background(Capsule().fill(Theme.ink))
+                    .overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth))
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 40)
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
     }
 
     // MARK: Header
@@ -248,7 +303,16 @@ struct RecipeChatView: View {
         if let latest = sessions.first {
             messages = latest.messages
             currentSessionId = latest.id
+            checkIdleState()
         }
+    }
+
+    private func checkIdleState() {
+        guard !messages.isEmpty,
+              let lastActivity = UserDefaults.standard.object(forKey: lastActivityKey) as? Date,
+              Date.now.timeIntervalSince(lastActivity) > idleThreshold
+        else { return }
+        withAnimation(.spring(duration: 0.35)) { showingIdlePrompt = true }
     }
 
     private func saveCurrentSession() {
@@ -266,7 +330,6 @@ struct RecipeChatView: View {
         } else {
             sessions.insert(session, at: 0)
         }
-        // Keep at most 30 sessions
         if sessions.count > 30 { sessions = Array(sessions.prefix(30)) }
         if let data = try? JSONEncoder().encode(sessions) {
             UserDefaults.standard.set(data, forKey: sessionsKey)
