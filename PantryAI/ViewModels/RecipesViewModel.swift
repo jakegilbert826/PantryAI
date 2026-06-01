@@ -102,9 +102,9 @@ final class RecipesViewModel {
         savedRecipes.contains(where: { $0.name == recipe.name })
     }
 
-    func streamChatRecipe(userPrompt: String) async throws -> AsyncThrowingStream<String, Error> {
+    func streamChatRecipe(history: [ChatTurn]) async throws -> AsyncThrowingStream<String, Error> {
         let inv = try inventory.all()
-        return try await gemini.streamChatRecipe(userPrompt: userPrompt, inventory: inv)
+        return try await gemini.streamChatRecipe(history: history, inventory: inv)
     }
 
     private func loadFromDefaults() {

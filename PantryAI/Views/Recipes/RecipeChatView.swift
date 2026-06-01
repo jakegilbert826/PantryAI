@@ -195,12 +195,15 @@ struct RecipeChatView: View {
         messageText = ""
         inputFocused = false
         messages.append(ChatMessage(role: .user, text: prompt))
+
+        let history = messages.map { ChatTurn(role: $0.role == .user ? .user : .model, text: $0.text) }
+
         messages.append(ChatMessage(role: .pip, text: ""))
         isStreaming = true
 
         Task {
             do {
-                let stream = try await vm.streamChatRecipe(userPrompt: prompt)
+                let stream = try await vm.streamChatRecipe(history: history)
                 for try await chunk in stream {
                     messages[messages.count - 1].text += chunk
                 }

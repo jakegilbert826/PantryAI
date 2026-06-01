@@ -168,7 +168,7 @@ final class GeminiService: GeminiServiceProtocol {
     // MARK: Chat recipe (streaming)
 
     func streamChatRecipe(
-        userPrompt: String,
+        history: [ChatTurn],
         inventory: [InventoryItem]
     ) async throws -> AsyncThrowingStream<String, Error> {
         let apiKey = try requireKey()
@@ -184,11 +184,14 @@ final class GeminiService: GeminiServiceProtocol {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let prompt = Self.chatRecipePrompt(userPrompt: userPrompt, inventory: inventory)
+        let window = history.suffix(10)
+        let contents: [[String: Any]] = window.map { turn in
+            ["role": turn.role == .user ? "user" : "model",
+             "parts": [["text": turn.text]]]
+        }
         let body: [String: Any] = [
-            "contents": [[
-                "parts": [["text": prompt]]
-            ]],
+            "system_instruction": ["parts": [["text": Self.chatSystemInstruction(inventory: inventory)]]],
+            "contents": contents,
             "generationConfig": ["temperature": 0.7]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -377,17 +380,14 @@ extension GeminiService {
         """
     }
 
-    static func chatRecipePrompt(userPrompt: String, inventory: [InventoryItem]) -> String {
+    static func chatSystemInstruction(inventory: [InventoryItem]) -> String {
         let inv = inventory.isEmpty
-            ? "pantry is currently empty"
-            : inventory.map { "\($0.name) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ")
+            ? "The pantry is currently empty."
+            : "The user's pantry contains: " + inventory.map { "\($0.name) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ") + "."
         return """
-        You are Pip, a friendly kitchen assistant. The user's pantry contains: \(inv).
-
-        The user wants: "\(userPrompt)"
-
-        Create a recipe that matches their request, using pantry items where possible. If key items are missing, note what to buy.
-        Format as markdown: a short intro, an ingredients list with quantities, then numbered cooking steps.
+        You are Pip, a friendly kitchen assistant. \(inv)
+        Help the user with recipe requests and cooking questions across the conversation, using pantry items where possible. If key items are missing, note what to buy.
+        Format recipes as markdown: a short intro, an ingredients list with quantities, then numbered cooking steps.
         Keep it practical and under 30 minutes where possible.
         """
     }
