@@ -56,6 +56,6 @@ struct LiveCookingView: View {
             .frame(maxWidth: .infinity)
             CircleIconButton(systemName: "timer", background: Theme.amber) {}
         }
-        .padding(.top, 70)
+        .padding(.top, 16)
     }
 }

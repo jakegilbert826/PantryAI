@@ -37,7 +37,7 @@ struct SavedRecipesView: View {
             .frame(maxWidth: .infinity)
             CircleIconButton(systemName: "heart.fill", background: Theme.rose) {}
         }
-        .padding(.top, 70)
+        .padding(.top, 16)
     }
 
     @ViewBuilder
