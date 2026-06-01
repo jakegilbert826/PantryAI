@@ -17,11 +17,10 @@ final class GeminiService: GeminiServiceProtocol {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let prompt = Self.scanPrompt
         let body: [String: Any] = [
             "contents": [[
                 "parts": [
-                    ["text": prompt],
+                    ["text": Self.scanPrompt],
                     ["inline_data": [
                         "mime_type": "image/jpeg",
                         "data": imageData.base64EncodedString(),
@@ -37,9 +36,7 @@ final class GeminiService: GeminiServiceProtocol {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         try ensureOK(resp, data)
-
-        let text = try extractText(from: data)
-        return try decodeScannedItems(from: text)
+        return try decodeScannedItems(from: try extractText(from: data))
     }
 
     func scanReceipt(imageData: Data) async throws -> [ScannedItem] {
@@ -70,9 +67,7 @@ final class GeminiService: GeminiServiceProtocol {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         try ensureOK(resp, data)
-
-        let text = try extractText(from: data)
-        return try decodeScannedItems(from: text)
+        return try decodeScannedItems(from: try extractText(from: data))
     }
 
     // MARK: Recipes
@@ -89,10 +84,9 @@ final class GeminiService: GeminiServiceProtocol {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let prompt = Self.recipePrompt(inventory: inventory, preferences: preferences)
         let body: [String: Any] = [
             "contents": [[
-                "parts": [["text": prompt]]
+                "parts": [["text": Self.recipePrompt(inventory: inventory, preferences: preferences)]]
             ]],
             "generationConfig": [
                 "temperature": 0.6,
@@ -103,8 +97,7 @@ final class GeminiService: GeminiServiceProtocol {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         try ensureOK(resp, data)
-        let text = try extractText(from: data)
-        return try decodeRecipes(from: text)
+        return try decodeRecipes(from: try extractText(from: data))
     }
 
     // MARK: Recipe detail (streaming)
@@ -116,10 +109,6 @@ final class GeminiService: GeminiServiceProtocol {
         let apiKey = try requireKey()
         let baseURL = AppConfig.geminiBaseURL
             .appendingPathComponent("models/\(AppConfig.geminiModel):streamGenerateContent")
-        // Without `alt=sse` the streaming endpoint returns one big pretty-printed
-        // JSON array spread over many lines, which the line-based parser below
-        // cannot reassemble. `alt=sse` gives one complete JSON object per
-        // `data:` line instead.
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "alt", value: "sse")]
         guard let url = components?.url else {
@@ -130,10 +119,9 @@ final class GeminiService: GeminiServiceProtocol {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let prompt = Self.recipeDetailPrompt(recipe: recipe, inventory: inventory)
         let body: [String: Any] = [
             "contents": [[
-                "parts": [["text": prompt]]
+                "parts": [["text": Self.recipeDetailPrompt(recipe: recipe, inventory: inventory)]]
             ]],
             "generationConfig": ["temperature": 0.5]
         ]
@@ -145,9 +133,6 @@ final class GeminiService: GeminiServiceProtocol {
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    // With `alt=sse` each event arrives as `data: {json}`, where
-                    // the JSON is one complete chunk holding
-                    // `candidates[0].content.parts[0].text`.
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data:") else { continue }
                         let payload = line.dropFirst("data:".count)
@@ -267,10 +252,10 @@ final class GeminiService: GeminiServiceProtocol {
         return raws.map {
             ScannedItem(
                 name: $0.name,
-                category: InventoryCategory(rawValue: $0.category) ?? .dryGoods,
-                brand: $0.brand,
-                quantity: $0.quantity,
-                unit: $0.unit,
+                foodCategory: FoodCategory(rawValue: $0.category) ?? .dryGoods,
+                brandName: $0.brand,
+                measureValue: $0.quantity,
+                measureUnit: .from($0.unit),
                 confidence: $0.confidence
             )
         }
@@ -306,7 +291,7 @@ final class GeminiService: GeminiServiceProtocol {
     }
 }
 
-// MARK: Prompts
+// MARK: - Prompts
 
 extension GeminiService {
     static let receiptPrompt = """
@@ -348,9 +333,9 @@ extension GeminiService {
         let inv = inventory.map {
             [
                 "name": $0.name,
-                "category": $0.category.rawValue,
+                "category": $0.foodCategory.rawValue,
                 "confidence": $0.currentConfidence,
-                "quantity": $0.quantity,
+                "quantity": $0.measureValue ?? 0,
             ] as [String: Any]
         }
         let prefs = preferences.map {

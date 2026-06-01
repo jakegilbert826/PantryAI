@@ -1,48 +1,67 @@
 import XCTest
+import SwiftData
 @testable import PantryAI
 
 @MainActor
 final class InventoryItemTests: XCTestCase {
 
+    private var context: ModelContext!
+
     override func setUp() {
         super.setUp()
-        // currentConfidence reads the shared household size — pin it.
+        context = TestModelContainer.make()
         UserPreferences.shared.householdSize = 1
     }
 
-    func testResolvedModelUsesCategoryDefaultWhenNoOverride() {
-        let item = InventoryItem(name: "Rice", category: .dryGoods, lastScanConfidence: 1.0)
+    override func tearDown() {
+        context = nil
+        super.tearDown()
+    }
+
+    private func makeItem(
+        name: String = "Rice",
+        foodCategory: FoodCategory = .dryGoods,
+        measureConfidence: Double = 1.0,
+        lastScannedAt: Date? = nil,
+        decayRateOverride: Double? = nil
+    ) -> InventoryItem {
+        let item = InventoryItem(
+            name: name,
+            foodCategory: foodCategory,
+            measureConfidence: measureConfidence,
+            decayRateOverride: decayRateOverride,
+            lastScannedAt: lastScannedAt
+        )
+        context.insert(item)
+        return item
+    }
+
+    func testDefaultDecayModelWithNoRateOverride() {
+        let item = makeItem(foodCategory: .dryGoods)
         XCTAssertEqual(item.decayModel.modelIdentifier, "linear")
     }
 
-    func testResolvedModelHonoursValidOverride() {
-        let item = InventoryItem(
-            name: "Rice", category: .dryGoods,
-            lastScanConfidence: 1.0, decayModelOverride: "exponential"
-        )
+    func testFreshProduceUsesExponentialByDefault() {
+        let item = makeItem(foodCategory: .freshProduce)
         XCTAssertEqual(item.decayModel.modelIdentifier, "exponential")
     }
 
-    func testInvalidOverrideFallsBackToCategoryDefault() {
-        let item = InventoryItem(
-            name: "Rice", category: .dryGoods,
-            lastScanConfidence: 1.0, decayModelOverride: "bogus"
-        )
+    func testDecayRateOverridePreservesModelTypeForCategory() {
+        // Override changes half-life, not model type
+        let item = makeItem(foodCategory: .dryGoods, decayRateOverride: 30.0)
         XCTAssertEqual(item.decayModel.modelIdentifier, "linear")
     }
 
     func testCurrentConfidenceIsFreshRightAfterScan() {
-        let item = InventoryItem(
-            name: "Rice", category: .dryGoods,
-            lastScanConfidence: 1.0, lastScanDate: .now
-        )
+        let item = makeItem(measureConfidence: 1.0, lastScannedAt: .now)
         XCTAssertEqual(item.currentConfidence, 1.0, accuracy: 0.01)
     }
 
     func testIsLowAndIsExpiringForDepletedItem() {
-        let item = InventoryItem(
-            name: "Milk", category: .dairy,
-            lastScanConfidence: 1.0, lastScanDate: .daysAgo(10_000)
+        let item = makeItem(
+            foodCategory: .dairy,
+            measureConfidence: 1.0,
+            lastScannedAt: .daysAgo(10_000)
         )
         XCTAssertEqual(item.currentConfidence, 0.0, accuracy: 0.0001)
         XCTAssertTrue(item.isLow)
@@ -50,44 +69,28 @@ final class InventoryItemTests: XCTestCase {
     }
 
     func testFreshItemIsNeitherLowNorExpiring() {
-        let item = InventoryItem(
-            name: "Rice", category: .dryGoods,
-            lastScanConfidence: 1.0, lastScanDate: .now
-        )
+        let item = makeItem(measureConfidence: 1.0, lastScannedAt: .now)
         XCTAssertFalse(item.isLow)
         XCTAssertFalse(item.isExpiring)
     }
 
     func testExpiringThresholdIsWiderThanLowThreshold() {
-        // An item between 0.25 and 0.40 confidence is expiring but not low.
-        // dairy half-life 7 → linear total life 14 days; 9 days ≈ 0.357.
-        let item = InventoryItem(
-            name: "Yoghurt", category: .dairy,
-            lastScanConfidence: 1.0, lastScanDate: .daysAgo(9)
+        // dairy half-life 7 → linear total life 14 days; 9 days ≈ 0.357
+        let item = makeItem(
+            name: "Yoghurt",
+            foodCategory: .dairy,
+            measureConfidence: 1.0,
+            lastScannedAt: .daysAgo(9)
         )
         XCTAssertEqual(item.currentConfidence, 0.357, accuracy: 0.02)
         XCTAssertTrue(item.isExpiring)
         XCTAssertFalse(item.isLow)
     }
 
-    func testInventoryItemCodableRoundTrip() throws {
-        let original = InventoryItem(
-            name: "Olive Oil", category: .condiments, brand: "Acme",
-            quantity: 0.5, unit: "ml", lastScanConfidence: 0.9,
-            lastScanDate: Date(timeIntervalSince1970: 1_700_000_000),
-            decayModelOverride: "exponential",
-            usageHistory: [UsageEvent(itemID: UUID(), quantityUsed: 0.1)],
-            imageURL: "https://example.com/oil.jpg"
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(InventoryItem.self, from: data)
-        XCTAssertEqual(decoded, original)
-    }
-
     func testScannedItemDefaultsToIncluded() {
         let scanned = ScannedItem(
-            name: "Eggs", category: .dairy, brand: nil,
-            quantity: 1.0, unit: "units", confidence: 0.8
+            name: "Eggs", foodCategory: .dairy, brandName: nil,
+            measureValue: 1.0, measureUnit: .unit, confidence: 0.8
         )
         XCTAssertTrue(scanned.include)
     }

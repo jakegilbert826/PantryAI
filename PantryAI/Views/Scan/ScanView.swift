@@ -372,7 +372,7 @@ private struct DetectedRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     DisplayText(text: item.name, size: 19)
-                    Text("\(item.category.displayName) · \(Int(item.confidence * 100))% confident")
+                    Text("\(item.foodCategory.displayName) · \(Int(item.confidence * 100))% confident")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.ink2)
                 }
@@ -381,7 +381,7 @@ private struct DetectedRow: View {
             .padding(.horizontal, 16).padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(item.include ? item.category.cardColor : Theme.surface)
+                    .fill(item.include ? item.foodCategory.cardColor : Theme.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)

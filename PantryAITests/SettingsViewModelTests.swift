@@ -73,7 +73,7 @@ final class SettingsViewModelTests: XCTestCase {
     func testClearAllInventoryEmptiesStore() throws {
         let service = InventoryService(context: context)
         try service.upsert([
-            InventoryItem(name: "Rice", category: .dryGoods, lastScanConfidence: 1.0),
+            InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0),
         ])
         let vm = SettingsViewModel(context: context)
         vm.clearAllInventory()

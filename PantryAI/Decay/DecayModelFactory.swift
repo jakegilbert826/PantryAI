@@ -1,30 +1,19 @@
 import Foundation
 
 enum DecayModelFactory {
-    /// Default model per category — straight from the handoff doc.
-    static func model(for category: InventoryCategory) -> any DecayModel {
+    /// Default model per category. Pass `halfLifeOverride` to use a custom half-life in days
+    /// instead of the category default (corresponds to `InventoryItem.decayRateOverride`).
+    static func model(for category: FoodCategory, halfLifeOverride: Double? = nil) -> any DecayModel {
         switch category {
-        case .freshProduce: return ExponentialDecayModel(category: category)
-        case .dairy:        return LinearDecayModel(category: category)
-        case .meat:         return StepDecayModel(category: category)
-        case .fish:         return StepDecayModel(category: category)
-        case .frozenGoods:  return LinearDecayModel(category: category)
-        case .dryGoods:     return LinearDecayModel(category: category)
-        case .condiments:   return ExponentialDecayModel(category: category)
-        case .beverages:    return LinearDecayModel(category: category)
-        case .snacks:       return ExponentialDecayModel(category: category)
-        }
-    }
-
-    /// Resolve a model from its persisted identifier (used to honour the
-    /// per-item override on `InventoryItem.decayModelOverride`).
-    static func model(byIdentifier id: String, category: InventoryCategory) -> (any DecayModel)? {
-        switch id {
-        case "linear":      return LinearDecayModel(category: category)
-        case "exponential": return ExponentialDecayModel(category: category)
-        case "step":        return StepDecayModel(category: category)
-        case "learned":     return LearnedDecayModel(category: category)
-        default:            return nil
+        case .freshProduce: return ExponentialDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .dairy:        return LinearDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .meat:         return StepDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .fish:         return StepDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .frozenGoods:  return LinearDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .dryGoods:     return LinearDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .condiments:   return ExponentialDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .beverages:    return LinearDecayModel(category: category, halfLifeDays: halfLifeOverride)
+        case .snacks:       return ExponentialDecayModel(category: category, halfLifeDays: halfLifeOverride)
         }
     }
 

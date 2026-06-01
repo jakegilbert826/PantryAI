@@ -1,8 +1,8 @@
 import XCTest
 @testable import PantryAI
 
-/// The app and the FastAPI backend exchange JSON with snake_case keys and
-/// ISO-8601 dates. These tests lock that contract down on the Swift side.
+/// The app and the FastAPI backend exchange JSON. These tests lock the Swift-side
+/// wire contract down so field renames don't silently break the API.
 final class WireFormatTests: XCTestCase {
 
     private func backendDecoder() -> JSONDecoder {
@@ -21,63 +21,54 @@ final class WireFormatTests: XCTestCase {
 
     func testBackendItemFromInventoryItemPreservesFields() {
         let item = InventoryItem(
-            name: "Butter", category: .dairy, brand: "Kerry",
-            quantity: 0.75, unit: "g", lastScanConfidence: 0.9,
-            decayModelOverride: "linear", imageURL: nil
+            name: "Butter", brandName: "Kerry",
+            foodCategory: .dairy,
+            measureValue: 0.75, measureUnit: .g,
+            measureConfidence: 0.9,
+            decayRateOverride: nil
         )
         let wire = BackendInventoryItem(from: item)
         XCTAssertEqual(wire.id, item.id)
         XCTAssertEqual(wire.name, "Butter")
-        XCTAssertEqual(wire.category, "dairy")
-        XCTAssertEqual(wire.quantity, 0.75)
-        XCTAssertEqual(wire.decayModelOverride, "linear")
+        XCTAssertEqual(wire.foodCategory, "dairy")
+        XCTAssertEqual(wire.measureValue, 0.75)
+        XCTAssertNil(wire.decayRateOverride)
     }
 
-    func testBackendItemRoundTripsThroughStruct() {
+    func testBackendItemRoundTripsThroughModel() {
         let item = InventoryItem(
-            name: "Spinach", category: .freshProduce,
-            quantity: 1.0, lastScanConfidence: 0.6
+            name: "Spinach", foodCategory: .freshProduce,
+            measureValue: 1.0, measureConfidence: 0.6
         )
-        let restored = BackendInventoryItem(from: item).toStruct()
+        let restored = BackendInventoryItem(from: item).toModel()
         XCTAssertEqual(restored.name, item.name)
-        XCTAssertEqual(restored.category, item.category)
-        XCTAssertEqual(restored.quantity, item.quantity)
-        XCTAssertEqual(restored.lastScanConfidence, item.lastScanConfidence)
-        // The wire format does not carry usage history.
-        XCTAssertTrue(restored.usageHistory.isEmpty)
+        XCTAssertEqual(restored.foodCategory, item.foodCategory)
+        XCTAssertEqual(restored.measureValue, item.measureValue)
+        XCTAssertEqual(restored.measureConfidence, item.measureConfidence)
     }
 
     func testBackendItemUnknownCategoryFallsBackToDryGoods() {
         let json = """
-        {"id":"\(UUID().uuidString)","name":"Mystery","category":"plutonium",
-         "quantity":1.0,"last_scan_confidence":0.5,
-         "last_scan_date":"2026-01-01T00:00:00Z"}
+        {"id":"\(UUID().uuidString)","name":"Mystery","food_category":"plutonium",
+         "measure_value":1.0,"measure_unit":"unit","measure_confidence":0.5}
         """.data(using: .utf8)!
         let wire = try! backendDecoder().decode(BackendInventoryItem.self, from: json)
-        XCTAssertEqual(wire.toStruct().category, .dryGoods)
+        XCTAssertEqual(wire.toModel().foodCategory, .dryGoods)
     }
 
     func testBackendItemDecodesSnakeCaseAndISO8601() throws {
         let original = BackendInventoryItem(from: InventoryItem(
-            name: "Cheese", category: .dairy,
-            lastScanConfidence: 0.8,
-            lastScanDate: Date(timeIntervalSince1970: 1_700_000_000)
+            name: "Cheese", foodCategory: .dairy,
+            measureConfidence: 0.8,
+            lastScannedAt: Date(timeIntervalSince1970: 1_700_000_000)
         ))
         let data = try backendEncoder().encode(original)
         let json = String(data: data, encoding: .utf8)!
-        XCTAssertTrue(json.contains("last_scan_confidence"))
-        XCTAssertTrue(json.contains("last_scan_date"))
+        XCTAssertTrue(json.contains("measure_confidence"))
+        XCTAssertTrue(json.contains("last_scanned_at"))
 
         let decoded = try backendDecoder().decode(BackendInventoryItem.self, from: data)
-        XCTAssertEqual(decoded.lastScanDate, original.lastScanDate)
-    }
-
-    func testUsageEventCodableRoundTrip() throws {
-        let event = UsageEvent(itemID: UUID(), quantityUsed: 0.4, source: .recipeCooked)
-        let data = try JSONEncoder().encode(event)
-        let decoded = try JSONDecoder().decode(UsageEvent.self, from: data)
-        XCTAssertEqual(decoded, event)
-        XCTAssertEqual(decoded.source, .recipeCooked)
+        XCTAssertEqual(decoded.lastScannedAt, original.lastScannedAt)
     }
 
     func testRecipeSuggestionDecodesFromGeminiShape() throws {

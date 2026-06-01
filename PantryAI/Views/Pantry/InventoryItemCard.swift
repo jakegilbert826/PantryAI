@@ -24,7 +24,7 @@ struct InventoryItemCard: View {
     @ViewBuilder
     private func cardContent(confidence: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionText(text: item.category.location.displayName, color: Theme.ink2)
+            CaptionText(text: item.storageLocation.displayName, color: Theme.ink2)
             DisplayText(text: item.name, size: 19)
                 .lineLimit(2)
             Text(subtitle)
@@ -49,7 +49,7 @@ struct InventoryItemCard: View {
         .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                .fill(item.category.cardColor)
+                .fill(item.foodCategory.cardColor)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
@@ -59,9 +59,11 @@ struct InventoryItemCard: View {
 
     private var subtitle: String {
         var parts: [String] = []
-        if let brand = item.brand { parts.append(brand) }
-        if let unit = item.unit { parts.append("\(Int(item.quantity * 100))% \(unit)") }
-        if parts.isEmpty { parts.append(item.category.displayName.lowercased()) }
+        if let brand = item.brandName { parts.append(brand) }
+        if let value = item.measureValue {
+            parts.append("\(Int(value * 100))% \(item.measureUnit.rawValue)")
+        }
+        if parts.isEmpty { parts.append(item.foodCategory.displayName.lowercased()) }
         return parts.joined(separator: " · ")
     }
 }

@@ -14,7 +14,7 @@ final class GeminiPromptTests: XCTestCase {
 
     func testScanPromptListsEveryCategoryRawValue() {
         let prompt = GeminiService.scanPrompt
-        for category in InventoryCategory.allCases {
+        for category in FoodCategory.allCases {
             XCTAssertTrue(prompt.contains(category.rawValue),
                 "scan prompt is missing category \(category.rawValue)")
         }
@@ -26,7 +26,7 @@ final class GeminiPromptTests: XCTestCase {
 
     func testRecipePromptEmbedsInventoryAndPreferencesAsJSON() {
         let inventory = [
-            InventoryItem(name: "Rice", category: .dryGoods, lastScanConfidence: 1.0),
+            InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0),
         ]
         let prefs = [RecipePreferenceSnapshot(recipeName: "Curry", liked: true)]
         let prompt = GeminiService.recipePrompt(inventory: inventory, preferences: prefs)
@@ -38,14 +38,13 @@ final class GeminiPromptTests: XCTestCase {
 
     func testRecipePromptHandlesEmptyInventoryGracefully() {
         let prompt = GeminiService.recipePrompt(inventory: [], preferences: [])
-        // Must still produce valid embedded JSON arrays, not crash or blank out.
         XCTAssertTrue(prompt.contains("[]"))
     }
 
     func testRecipeDetailPromptNamesRecipeAndIncludesInventory() {
         let inventory = [
-            InventoryItem(name: "Eggs", category: .dairy,
-                          lastScanConfidence: 1.0, lastScanDate: .now),
+            InventoryItem(name: "Eggs", foodCategory: .dairy,
+                          measureConfidence: 1.0, lastScannedAt: .now),
         ]
         let prompt = GeminiService.recipeDetailPrompt(recipe: "Shakshuka", inventory: inventory)
         XCTAssertTrue(prompt.contains("Shakshuka"))

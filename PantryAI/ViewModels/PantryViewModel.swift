@@ -31,7 +31,7 @@ final class PantryViewModel {
     }
 
     var byLocation: [(StorageLocation, [InventoryItem])] {
-        let grouped = Dictionary(grouping: items, by: { $0.category.location })
+        let grouped = Dictionary(grouping: items, by: { $0.storageLocation })
         return [StorageLocation.fridge, .freezer, .pantry].map { loc in
             (loc, grouped[loc] ?? [])
         }

@@ -1,14 +1,13 @@
 import Foundation
 
-/// "Present until expired, then gone." Used for items where partial-consumption
-/// estimation is meaningless — raw meat, fresh fish: it's either there or it
-/// got cooked/discarded.
+/// "Present until expired, then gone." Used where partial-consumption estimation
+/// is meaningless — raw meat and fresh fish are either there or they aren't.
 final class StepDecayModel: DecayModel {
-    let category: InventoryCategory
+    let category: FoodCategory
     let halfLifeDays: Double
     var modelIdentifier: String { "step" }
 
-    init(category: InventoryCategory, halfLifeDays: Double? = nil) {
+    init(category: FoodCategory, halfLifeDays: Double? = nil) {
         self.category = category
         self.halfLifeDays = halfLifeDays ?? DecayDefaults.halfLifeDays(for: category)
     }
@@ -17,7 +16,7 @@ final class StepDecayModel: DecayModel {
         lastScanConfidence: Double,
         lastScanDate: Date,
         householdSize: Int,
-        usageHistory: [UsageEvent]
+        usageHistory: [ItemQuantityLog]
     ) -> Double {
         let daysElapsed = max(0, Date.now.timeIntervalSince(lastScanDate) / 86_400)
         let depletion = halfLifeDays * 2 / householdMultiplier(householdSize)

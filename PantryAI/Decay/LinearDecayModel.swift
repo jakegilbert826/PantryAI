@@ -1,14 +1,13 @@
 import Foundation
 
 /// Confidence falls linearly toward zero across one full half-life × 2 window.
-/// Cheap, predictable, and a good baseline for stable categories (dry goods,
-/// frozen, beverages).
+/// Good baseline for stable categories (dry goods, frozen, beverages).
 final class LinearDecayModel: DecayModel {
-    let category: InventoryCategory
+    let category: FoodCategory
     let halfLifeDays: Double
     var modelIdentifier: String { "linear" }
 
-    init(category: InventoryCategory, halfLifeDays: Double? = nil) {
+    init(category: FoodCategory, halfLifeDays: Double? = nil) {
         self.category = category
         self.halfLifeDays = halfLifeDays ?? DecayDefaults.halfLifeDays(for: category)
     }
@@ -17,7 +16,7 @@ final class LinearDecayModel: DecayModel {
         lastScanConfidence: Double,
         lastScanDate: Date,
         householdSize: Int,
-        usageHistory: [UsageEvent]
+        usageHistory: [ItemQuantityLog]
     ) -> Double {
         let daysElapsed = max(0, Date.now.timeIntervalSince(lastScanDate) / 86_400)
         let totalLife = halfLifeDays * 2 / householdMultiplier(householdSize)

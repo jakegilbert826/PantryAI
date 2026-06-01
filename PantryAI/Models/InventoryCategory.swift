@@ -1,6 +1,8 @@
 import SwiftUI
 
-enum InventoryCategory: String, CaseIterable, Codable, Identifiable, Hashable {
+// MARK: - Food classification
+
+enum FoodCategory: String, CaseIterable, Codable, Identifiable, Hashable {
     case freshProduce = "fresh_produce"
     case dairy        = "dairy"
     case meat         = "meat"
@@ -27,20 +29,14 @@ enum InventoryCategory: String, CaseIterable, Codable, Identifiable, Hashable {
         }
     }
 
-    /// Where this category lives by default in the user's kitchen.
     var location: StorageLocation {
         switch self {
-        case .freshProduce, .dairy, .meat, .fish, .beverages, .condiments:
-            return .fridge
-        case .frozenGoods:
-            return .freezer
-        case .dryGoods, .snacks:
-            return .pantry
+        case .freshProduce, .dairy, .meat, .fish, .beverages, .condiments: return .fridge
+        case .frozenGoods: return .freezer
+        case .dryGoods, .snacks: return .pantry
         }
     }
 
-    /// Card colour used in the inventory grid. Matches the palette swatches
-    /// (sky/mint/rose/amber/lilac) from the design.
     var cardColor: Color {
         switch self {
         case .dairy:        return Theme.rose
@@ -56,8 +52,66 @@ enum InventoryCategory: String, CaseIterable, Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Storage
+
 enum StorageLocation: String, CaseIterable, Codable, Hashable, Identifiable {
     case fridge, freezer, pantry
     var id: String { rawValue }
     var displayName: String { rawValue.capitalized }
+}
+
+// MARK: - Packaging
+
+enum PackagingCategory: String, Codable, Hashable {
+    case canned, dried, frozen, fresh, beverage, condiment
+}
+
+// MARK: - Measure
+
+enum MeasureType: String, Codable, Hashable {
+    case weight, volume, count, bunch
+
+    static func from(_ unit: MeasureUnit) -> MeasureType {
+        switch unit {
+        case .g, .kg: return .weight
+        case .ml, .l: return .volume
+        case .unit:   return .count
+        case .bunch:  return .bunch
+        }
+    }
+}
+
+enum MeasureUnit: String, Codable, Hashable {
+    case g, kg, ml, l, unit, bunch
+
+    static func from(_ string: String?) -> MeasureUnit {
+        guard let s = string else { return .unit }
+        return MeasureUnit(rawValue: s.lowercased()) ?? .unit
+    }
+}
+
+// MARK: - Container
+
+enum ContainerType: String, Codable, Hashable {
+    case can, bottle, bag, box, punnet, jar
+}
+
+enum NominalUnit: String, Codable, Hashable {
+    case g, ml
+}
+
+// MARK: - Provenance
+
+enum InformationSource: String, Codable, Hashable {
+    case pantryScan, receipt, barcode, manual, inChat
+}
+
+enum RemovalReason: String, Codable, Hashable {
+    case consumed, wasted, expired, donated
+}
+
+// MARK: - Quantity log
+
+enum LogSource: String, Codable, Hashable {
+    case scan, orderImport, manual, decayModel, usageLog
 }

@@ -20,8 +20,8 @@ final class InventoryServiceTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeItem(_ name: String, category: InventoryCategory = .dryGoods) -> InventoryItem {
-        InventoryItem(name: name, category: category, lastScanConfidence: 1.0)
+    private func makeItem(_ name: String, category: FoodCategory = .dryGoods) -> InventoryItem {
+        InventoryItem(name: name, foodCategory: category, measureConfidence: 1.0)
     }
 
     // MARK: Insert / read
@@ -35,27 +35,25 @@ final class InventoryServiceTests: XCTestCase {
 
     func testUpsertUpdatesExistingByCaseInsensitiveName() throws {
         try service.upsert([makeItem("Milk", category: .dairy)])
-        // Same name, different case + new quantity → should update, not duplicate.
-        var updated = makeItem("MILK", category: .dairy)
-        updated.quantity = 0.25
+        let updated = makeItem("MILK", category: .dairy)
+        updated.measureValue = 0.25
         try service.upsert([updated])
 
         let all = try service.all()
         XCTAssertEqual(all.count, 1, "case-folded name should dedupe")
-        XCTAssertEqual(all.first?.quantity, 0.25)
+        XCTAssertEqual(all.first?.measureValue, 0.25)
     }
 
     func testAllSortsByUpdatedAtDescending() throws {
         try service.upsert([makeItem("First")])
         try service.upsert([makeItem("Second")])
         let all = try service.all()
-        // Most recently written comes first.
         XCTAssertEqual(all.first?.name, "Second")
     }
 
-    // MARK: Delete
+    // MARK: Delete (soft)
 
-    func testDeleteRemovesItem() throws {
+    func testDeleteRemovesItemFromAll() throws {
         let item = makeItem("Eggs", category: .dairy)
         try service.upsert([item])
         try service.delete(id: item.id)
@@ -70,15 +68,15 @@ final class InventoryServiceTests: XCTestCase {
 
     // MARK: Usage logging
 
-    func testLogUsageAppendsEventToItem() throws {
+    func testLogUsageAppendsLogToItem() throws {
         let item = makeItem("Yoghurt", category: .dairy)
         try service.upsert([item])
         try service.logUsage(itemID: item.id, quantityUsed: 0.3, source: .manual)
 
         let stored = try service.all().first { $0.id == item.id }
-        XCTAssertEqual(stored?.usageHistory.count, 1)
-        XCTAssertEqual(stored?.usageHistory.first?.quantityUsed, 0.3)
-        XCTAssertEqual(stored?.usageHistory.first?.source, .manual)
+        XCTAssertEqual(stored?.quantityLog.count, 1)
+        XCTAssertEqual(stored?.quantityLog.first?.measureValue, 0.3)
+        XCTAssertEqual(stored?.quantityLog.first?.source, .manual)
     }
 
     func testLogUsageForUnknownItemIsNoOp() throws {
@@ -108,12 +106,12 @@ final class InventoryServiceTests: XCTestCase {
         XCTAssertTrue(try service.all().isEmpty)
     }
 
-    func testUsageHistorySurvivesReFetch() throws {
+    func testQuantityLogSurvivesReFetch() throws {
         let item = makeItem("Oats")
         try service.upsert([item])
         try service.logUsage(itemID: item.id, quantityUsed: 0.1)
         try service.logUsage(itemID: item.id, quantityUsed: 0.2)
         let stored = try service.all().first { $0.id == item.id }
-        XCTAssertEqual(stored?.usageHistory.count, 2)
+        XCTAssertEqual(stored?.quantityLog.count, 2)
     }
 }

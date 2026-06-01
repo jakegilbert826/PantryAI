@@ -120,10 +120,10 @@ final class RecipesViewModel {
         }
         for name in payload.add {
             let item = InventoryItem(
-                id: UUID(), name: name, category: .dryGoods,
-                brand: nil, quantity: 1.0, unit: nil,
-                lastScanConfidence: 1.0, lastScanDate: .now,
-                decayModelOverride: nil, usageHistory: [], imageURL: nil
+                name: name,
+                foodCategory: .dryGoods,
+                measureConfidence: 1.0,
+                informationSource: .inChat
             )
             try? inventory.upsert([item])
         }
