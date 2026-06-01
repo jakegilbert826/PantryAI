@@ -62,6 +62,18 @@ final class InventoryService {
         }
     }
 
+    func delete(name: String) throws {
+        let lower = name.lowercased()
+        let descriptor = FetchDescriptor<InventoryItemRecord>()
+        let records = try context.fetch(descriptor)
+        var deleted = false
+        for record in records where record.name.lowercased() == lower {
+            context.delete(record)
+            deleted = true
+        }
+        if deleted { try context.save() }
+    }
+
     func logUsage(itemID: UUID, quantityUsed: Double, source: UsageEvent.Source = .manual) throws {
         let descriptor = FetchDescriptor<InventoryItemRecord>(predicate: #Predicate { $0.id == itemID })
         guard let record = try context.fetch(descriptor).first else { return }

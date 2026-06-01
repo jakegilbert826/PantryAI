@@ -107,6 +107,33 @@ final class RecipesViewModel {
         return try await gemini.streamChatRecipe(history: history, inventory: inv)
     }
 
+    func applyInventoryActions(from fullText: String) async {
+        guard let range = fullText.range(of: "---JSON---") else { return }
+        let jsonString = String(fullText[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !jsonString.isEmpty,
+              let data = jsonString.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(InventoryActions.self, from: data)
+        else { return }
+
+        for name in payload.remove {
+            try? inventory.delete(name: name)
+        }
+        for name in payload.add {
+            let item = InventoryItem(
+                id: UUID(), name: name, category: .dryGoods,
+                brand: nil, quantity: 1.0, unit: nil,
+                lastScanConfidence: 1.0, lastScanDate: .now,
+                decayModelOverride: nil, usageHistory: [], imageURL: nil
+            )
+            try? inventory.upsert([item])
+        }
+    }
+
+    private struct InventoryActions: Decodable {
+        let remove: [String]
+        let add: [String]
+    }
+
     private func loadFromDefaults() {
         let ud = UserDefaults.standard
         if let data = ud.data(forKey: UDKeys.suggestions),

@@ -135,7 +135,7 @@ struct RecipeChatView: View {
                             )
                     )
             } else {
-                RecipeMarkdownView(markdown: msg.text)
+                RecipeMarkdownView(markdown: msg.markdownText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(
@@ -207,6 +207,9 @@ struct RecipeChatView: View {
                 for try await chunk in stream {
                     messages[messages.count - 1].text += chunk
                 }
+                let fullText = messages[messages.count - 1].text
+                await vm.applyInventoryActions(from: fullText)
+                messages[messages.count - 1].text = fullText.markdownOnly
             } catch {
                 messages[messages.count - 1].text = "Oops — something went wrong. Please try again."
             }
@@ -222,6 +225,15 @@ private struct ChatMessage: Identifiable {
     let role: Role
     var text: String
     enum Role { case user, pip }
+
+    var markdownText: String { text.markdownOnly }
+}
+
+private extension String {
+    var markdownOnly: String {
+        guard let range = self.range(of: "---JSON---") else { return self }
+        return String(self[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 private struct TypingIndicator: View {

@@ -389,6 +389,12 @@ extension GeminiService {
         Help the user with recipe requests and cooking questions across the conversation, using pantry items where possible. If key items are missing, note what to buy.
         Format recipes as markdown: a short intro, an ingredients list with quantities, then numbered cooking steps.
         Keep it practical and under 30 minutes where possible.
+
+        At the very end of EVERY response, after all other content, append this exact block:
+        ---JSON---
+        {"remove": [], "add": []}
+
+        Populate "remove" with the exact names of any pantry items the user says they don't have or want removed. Populate "add" with the exact names of any items the user says they've just bought or want added. Always include the block even when both arrays are empty. Do not include any text after the JSON block.
         """
     }
 
