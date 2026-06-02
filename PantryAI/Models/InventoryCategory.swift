@@ -66,6 +66,13 @@ enum PackagingCategory: String, Codable, Hashable {
     case canned, dried, frozen, fresh, beverage, condiment
 }
 
+// MARK: - Preferred display mode
+
+enum PreferredUnit {
+    case container
+    case measure
+}
+
 // MARK: - Measure
 
 enum MeasureType: String, Codable, Hashable {
