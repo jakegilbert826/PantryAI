@@ -33,9 +33,11 @@ struct InventoryItemCard: View {
                 .lineLimit(1)
             Spacer(minLength: 4)
             HStack(alignment: .bottom) {
-                Text(quantityDisplay)
-                    .font(.displayFallback(22, italic: true))
-                    .foregroundStyle(Theme.ink)
+                if let qty = quantityDisplay {
+                    Text(qty)
+                        .font(.displayFallback(22, italic: true))
+                        .foregroundStyle(Theme.ink)
+                }
                 Spacer()
                 Ring(percentage: confidence, size: 32, stroke: 4)
             }
@@ -57,8 +59,8 @@ struct InventoryItemCard: View {
         )
     }
 
-    private var quantityDisplay: String {
-        guard let value = item.measureValue else { return "—" }
+    private var quantityDisplay: String? {
+        guard let value = item.measureValue, value > 0 else { return nil }
         let numStr = value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
         return "\(numStr) \(item.measureUnit.rawValue)"
     }
