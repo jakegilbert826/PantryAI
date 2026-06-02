@@ -25,7 +25,7 @@ struct InventoryItemCard: View {
     private func cardContent(confidence: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionText(text: item.storageLocation.displayName, color: Theme.ink2)
-            DisplayText(text: item.name, size: 19)
+            DisplayText(text: item.canonicalName, size: 19)
                 .lineLimit(2)
             Text(subtitle)
                 .font(.system(size: 12))

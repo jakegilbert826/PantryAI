@@ -40,7 +40,7 @@ struct InventoryItemDetail: View {
                 .padding(.horizontal, 22)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    DisplayText(text: item.name, size: 40, italic: true)
+                    DisplayText(text: item.canonicalName, size: 40, italic: true)
                         .multilineTextAlignment(.leading)
                     Text("\(item.brandName ?? item.foodCategory.displayName) · \(item.storageLocation.displayName.lowercased())")
                         .font(.system(size: 13))

@@ -43,11 +43,11 @@ final class ScanViewModelTests: XCTestCase {
 
     func testAnalyseMovesToReviewAndMergesDuplicates() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.6),
-            ScannedItem(name: "eggs", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
-            ScannedItem(name: "Milk", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Milk", canonicalName: "milk", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.8),
         ]
         let vm = makeVM()
@@ -91,7 +91,7 @@ final class ScanViewModelTests: XCTestCase {
 
     func testToggleFlipsInclusion() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()
@@ -105,9 +105,9 @@ final class ScanViewModelTests: XCTestCase {
 
     func testCommitWritesIncludedItemsToInventory() async throws {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
-            ScannedItem(name: "Spam", foodCategory: .meat, brandName: nil,
+            ScannedItem(name: "Spam", canonicalName: "spam", foodCategory: .meat, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.5),
         ]
         let vm = makeVM()
@@ -124,7 +124,7 @@ final class ScanViewModelTests: XCTestCase {
 
     func testResetClearsState() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()

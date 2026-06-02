@@ -371,7 +371,7 @@ private struct DetectedRow: View {
                 .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    DisplayText(text: item.name, size: 19)
+                    DisplayText(text: item.canonicalName, size: 19)
                     Text("\(item.foodCategory.displayName) · \(Int(item.confidence * 100))% confident")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.ink2)

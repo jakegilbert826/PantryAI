@@ -242,21 +242,21 @@ final class GeminiService: GeminiServiceProtocol {
         guard let data = cleaned.data(using: .utf8) else { throw PantryError.decoding("non-utf8") }
         struct Raw: Decodable {
             let name: String
-            let canonicalName: String
+            let canonicalName: String?
             let brandName: String?
             let barcode: String?
-            let packagingCategory: String
-            let foodCategory: String
-            let storageLocation: String
-            let measureType: String
+            let packagingCategory: String?
+            let foodCategory: String?
+            let storageLocation: String?
+            let measureType: String?
             let measureValue: Double?
             let measureUnit: String?
-            let measureDisplayFraction: Bool
+            let measureDisplayFraction: Bool?
             let containerType: String?
             let containerCount: Double?
             let containerNominalSize: Double?
             let containerNominalUnit: String?
-            let openedAtEstimated: Bool
+            let openedAtEstimated: Bool?
             let confidence: Double
 
             enum CodingKeys: String, CodingKey {
@@ -283,7 +283,8 @@ final class GeminiService: GeminiServiceProtocol {
         return raws.map {
             ScannedItem(
                 name: $0.name,
-                foodCategory: FoodCategory(rawValue: $0.foodCategory) ?? .dryGoods,
+                canonicalName: $0.canonicalName ?? $0.name,
+                foodCategory: $0.foodCategory.flatMap(FoodCategory.init) ?? .dryGoods,
                 brandName: $0.brandName,
                 measureValue: $0.measureValue ?? 0,
                 measureUnit: .from($0.measureUnit),
@@ -307,6 +308,7 @@ final class GeminiService: GeminiServiceProtocol {
         return raws.map {
             ScannedItem(
                 name: $0.name,
+                canonicalName: $0.name,
                 foodCategory: FoodCategory(rawValue: $0.category) ?? .dryGoods,
                 brandName: $0.brand,
                 measureValue: $0.quantity,
