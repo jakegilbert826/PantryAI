@@ -36,7 +36,7 @@ final class GeminiService: GeminiServiceProtocol {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         try ensureOK(resp, data)
-        return try decodeScannedItems(from: try extractText(from: data))
+        return try decodeScanItems(from: try extractText(from: data))
     }
 
     func scanReceipt(imageData: Data) async throws -> [ScannedItem] {
@@ -67,7 +67,7 @@ final class GeminiService: GeminiServiceProtocol {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         try ensureOK(resp, data)
-        return try decodeScannedItems(from: try extractText(from: data))
+        return try decodeReceiptItems(from: try extractText(from: data))
     }
 
     // MARK: Recipes
@@ -237,7 +237,62 @@ final class GeminiService: GeminiServiceProtocol {
         return text
     }
 
-    private func decodeScannedItems(from text: String) throws -> [ScannedItem] {
+    private func decodeScanItems(from text: String) throws -> [ScannedItem] {
+        let cleaned = stripCodeFences(text)
+        guard let data = cleaned.data(using: .utf8) else { throw PantryError.decoding("non-utf8") }
+        struct Raw: Decodable {
+            let name: String
+            let canonicalName: String
+            let brandName: String?
+            let barcode: String?
+            let packagingCategory: String
+            let foodCategory: String
+            let storageLocation: String
+            let measureType: String
+            let measureValue: Double?
+            let measureUnit: String?
+            let measureDisplayFraction: Bool
+            let containerType: String?
+            let containerCount: Double?
+            let containerNominalSize: Double?
+            let containerNominalUnit: String?
+            let openedAtEstimated: Bool
+            let confidence: Double
+
+            enum CodingKeys: String, CodingKey {
+                case name
+                case canonicalName = "canonical_name"
+                case brandName = "brand_name"
+                case barcode
+                case packagingCategory = "packaging_category"
+                case foodCategory = "food_category"
+                case storageLocation = "storage_location"
+                case measureType = "measure_type"
+                case measureValue = "measure_value"
+                case measureUnit = "measure_unit"
+                case measureDisplayFraction = "measure_display_fraction"
+                case containerType = "container_type"
+                case containerCount = "container_count"
+                case containerNominalSize = "container_nominal_size"
+                case containerNominalUnit = "container_nominal_unit"
+                case openedAtEstimated = "opened_at_estimated"
+                case confidence
+            }
+        }
+        let raws = try JSONDecoder().decode([Raw].self, from: data)
+        return raws.map {
+            ScannedItem(
+                name: $0.name,
+                foodCategory: FoodCategory(rawValue: $0.foodCategory) ?? .dryGoods,
+                brandName: $0.brandName,
+                measureValue: $0.measureValue ?? 0,
+                measureUnit: .from($0.measureUnit),
+                confidence: $0.confidence
+            )
+        }
+    }
+
+    private func decodeReceiptItems(from text: String) throws -> [ScannedItem] {
         let cleaned = stripCodeFences(text)
         guard let data = cleaned.data(using: .utf8) else { throw PantryError.decoding("non-utf8") }
         struct Raw: Decodable {
@@ -314,19 +369,35 @@ extension GeminiService {
     """
 
     static let scanPrompt = """
-    You are a kitchen inventory scanner. Analyse this image of a fridge/freezer/pantry shelf.
+    You are a kitchen inventory scanner. Analyse this image and return ONLY a JSON array. No markdown, no explanation.
 
-    Return ONLY a JSON array with no markdown, no explanation. Each object must have:
+    Each object must have:
     {
       "name": string,
-      "category": string,   // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
-      "brand": string | null,
-      "quantity": number,   // 1.0 = full/new, 0.5 = half used
-      "unit": string | null, // "g", "ml", "units", or null
-      "confidence": number  // your detection confidence 0.0–1.0
+      "canonical_name": string,          // normalised lowercase, no brand e.g. "free range egg"
+      "brand_name": string | null,
+      "barcode": string | null,          // if visible on packaging
+      "packaging_category": string,      // one of: fresh, canned, dried, frozen, beverage, condiment
+      "food_category": string,           // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
+      "storage_location": string,        // one of: fridge, freezer, pantry
+      "measure_type": string,            // one of: weight, volume, count, bunch
+      "measure_value": number | null,    // null if cannot be determined from image
+      "measure_unit": string | null,     // one of: g, kg, ml, l, unit, bunch — null if measure_value is null
+      "measure_display_fraction": bool,  // true for count/bunch items, false for weight/volume
+      "container_type": string | null,   // one of: can, bottle, bag, box, punnet, jar — null if no container
+      "container_count": number | null,  // number of containers visible, null if no container
+      "container_nominal_size": number | null,  // e.g. 400 for a 400g can, null if not visible
+      "container_nominal_unit": string | null,  // one of: g, ml — null if not applicable
+      "opened_at_estimated": bool,       // true if packaging appears opened or partially used
+      "confidence": number               // your detection confidence 0.0–1.0
     }
 
-    If you cannot identify an item with reasonable confidence, omit it rather than guess.
+    Rules:
+    - If measure_value cannot be determined from the image, return null — do not guess
+    - If a container is present but nominal_size is not visible, return container_type and container_count but null for container_nominal_size
+    - If an item appears partially used, reflect that in measure_value (e.g. half a bunch = 0.5)
+    - Omit items you cannot identify with reasonable confidence
+    - Never return measure_value: 1.0 as a proxy for "full" — return the actual value or null
     """
 
     static func recipePrompt(inventory: [InventoryItem], preferences: [RecipePreferenceSnapshot]) -> String {
