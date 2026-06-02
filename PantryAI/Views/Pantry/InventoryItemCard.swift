@@ -33,7 +33,7 @@ struct InventoryItemCard: View {
                 .lineLimit(1)
             Spacer(minLength: 4)
             HStack(alignment: .bottom) {
-                Text("\(Int(confidence * 100))%")
+                Text(quantityDisplay)
                     .font(.displayFallback(22, italic: true))
                     .foregroundStyle(Theme.ink)
                 Spacer()
@@ -57,13 +57,14 @@ struct InventoryItemCard: View {
         )
     }
 
+    private var quantityDisplay: String {
+        guard let value = item.measureValue else { return "—" }
+        let numStr = value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
+        return "\(numStr) \(item.measureUnit.rawValue)"
+    }
+
     private var subtitle: String {
-        var parts: [String] = []
-        if let brand = item.brandName { parts.append(brand) }
-        if let value = item.measureValue {
-            parts.append("\(Int(value * 100))% \(item.measureUnit.rawValue)")
-        }
-        if parts.isEmpty { parts.append(item.foodCategory.displayName.lowercased()) }
-        return parts.joined(separator: " · ")
+        if let brand = item.brandName { return brand }
+        return item.foodCategory.displayName.lowercased()
     }
 }
