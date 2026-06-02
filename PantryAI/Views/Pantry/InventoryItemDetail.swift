@@ -7,11 +7,14 @@ struct InventoryItemDetail: View {
 
     @State private var quantity: Double
     @State private var location: StorageLocation
+    @State private var draftQuantityText: String = ""
+    @State private var draftUnit: MeasureUnit
 
     init(item: InventoryItem) {
         self.item = item
         _quantity = State(initialValue: item.measureValue ?? 1.0)
         _location = State(initialValue: item.storageLocation)
+        _draftUnit = State(initialValue: item.measureUnit)
     }
 
     var body: some View {
@@ -63,7 +66,11 @@ struct InventoryItemDetail: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            amountCard
+            if (item.measureValue ?? 0) <= 0 {
+                addAmountCard
+            } else {
+                amountCard
+            }
             HStack(alignment: .top, spacing: 12) {
                 useByCard
                 confidenceCard
@@ -79,6 +86,58 @@ struct InventoryItemDetail: View {
         .padding(.horizontal, 22)
         .padding(.top, 14)
         .padding(.bottom, 28)
+    }
+
+    // MARK: add amount card (shown when quantity is unknown)
+
+    private var addAmountCard: some View {
+        ChunkyCard(background: Theme.surface, shadowOffset: 4) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    CaptionText(text: "ADD AMOUNT")
+                    Spacer()
+                    Menu {
+                        ForEach(MeasureUnit.allCases, id: \.self) { unit in
+                            Button(unit.rawValue) { draftUnit = unit }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(draftUnit.rawValue.uppercased())
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.ink2)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Theme.ink2)
+                        }
+                    }
+                }
+                .padding(.bottom, 12)
+
+                TextField("0", text: $draftQuantityText)
+                    .keyboardType(.decimalPad)
+                    .font(.displayFallback(36, italic: true))
+                    .foregroundStyle(Theme.ink)
+                    .frame(height: 44)
+                    .padding(.bottom, 14)
+
+                Divider()
+                    .padding(.bottom, 12)
+
+                PillButton(title: "Save", icon: "checkmark", variant: .solid, size: .small) {
+                    saveQuantity()
+                }
+                .disabled((Double(draftQuantityText) ?? 0) <= 0)
+                .opacity((Double(draftQuantityText) ?? 0) > 0 ? 1 : 0.4)
+            }
+            .padding(16)
+        }
+    }
+
+    private func saveQuantity() {
+        guard let value = Double(draftQuantityText), value > 0 else { return }
+        item.measureValue = value
+        item.measureUnit = draftUnit
+        try? context.save()
     }
 
     // MARK: amount card

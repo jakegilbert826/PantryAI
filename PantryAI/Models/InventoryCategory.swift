@@ -81,7 +81,7 @@ enum MeasureType: String, Codable, Hashable {
     }
 }
 
-enum MeasureUnit: String, Codable, Hashable {
+enum MeasureUnit: String, CaseIterable, Codable, Hashable {
     case g, kg, ml, l, unit, bunch
 
     static func from(_ string: String?) -> MeasureUnit {

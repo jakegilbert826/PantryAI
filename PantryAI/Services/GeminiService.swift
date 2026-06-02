@@ -403,13 +403,14 @@ extension GeminiService {
     """
 
     static func recipePrompt(inventory: [InventoryItem], preferences: [RecipePreferenceSnapshot]) -> String {
-        let inv = inventory.map {
-            [
-                "name": $0.name,
-                "category": $0.foodCategory.rawValue,
-                "confidence": $0.currentConfidence,
-                "quantity": $0.measureValue ?? 0,
-            ] as [String: Any]
+        let inv = inventory.map { item -> [String: Any] in
+            let qty: Any = item.measureValue.map { $0 > 0 ? ($0 as Any) : ("unknown" as Any) } ?? ("unknown" as Any)
+            return [
+                "name": item.name,
+                "category": item.foodCategory.rawValue,
+                "confidence": item.currentConfidence,
+                "quantity": qty,
+            ]
         }
         let prefs = preferences.map {
             ["name": $0.recipeName, "liked": $0.liked] as [String: Any]
@@ -427,6 +428,10 @@ extension GeminiService {
         1. Recipes using items with low confidence (expiring soon)
         2. Recipes matching their preferences
         3. Recipes with the highest ingredient coverage from current inventory
+
+        Some items have quantity "unknown" — this means the amount was not recorded, not that none is left.
+        Never expose "unknown" literally in recipe names, ingredient lists, or descriptions.
+        Instead use natural phrasing, e.g. "I think you have some pesto — use it here" or "eggs (if you have any left)".
 
         Return ONLY a JSON array:
         [{
