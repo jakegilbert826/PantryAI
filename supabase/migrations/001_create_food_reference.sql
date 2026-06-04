@@ -1,7 +1,7 @@
 create type measure_type as enum ('weight', 'volume', 'count', 'bunch');
 create type measure_unit as enum ('g', 'kg', 'ml', 'l', 'unit', 'bunch');
 create type container_type as enum ('can', 'bottle', 'bag', 'box', 'punnet', 'jar');
-create type nominal_unit as enum ('g', 'ml');
+create type nominal_unit as enum ('g', 'ml', 'kg', 'l');
 create type storage_location as enum ('fridge', 'freezer', 'pantry');
 create type packaging_category as enum ('fresh', 'canned', 'dried', 'frozen', 'beverage', 'condiment');
 create type stepper_type as enum ('container', 'count', 'weight_volume');

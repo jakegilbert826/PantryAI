@@ -7,6 +7,7 @@ struct PantryAIApp: App {
 
     init() {
         TestSupport.applyLaunchArgumentsIfNeeded()
+        Task { await FoodReferenceService.shared.prefetch() }
     }
 
     var sharedModelContainer: ModelContainer = {
