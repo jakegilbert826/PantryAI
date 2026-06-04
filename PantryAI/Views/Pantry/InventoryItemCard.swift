@@ -60,9 +60,8 @@ struct InventoryItemCard: View {
     }
 
     private var quantityDisplay: String? {
-        guard let value = item.measureValue, value > 0 else { return nil }
-        let numStr = value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
-        return "\(numStr) \(item.measureUnit.rawValue)"
+        guard item.hasAmount else { return nil }
+        return item.amountDisplay.primary
     }
 
     private var subtitle: String {

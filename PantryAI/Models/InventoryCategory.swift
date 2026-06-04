@@ -104,7 +104,7 @@ enum ContainerType: String, Codable, Hashable {
 }
 
 enum NominalUnit: String, Codable, Hashable {
-    case g, ml
+    case g, ml, kg, l
 }
 
 enum StepperType: String, Codable, Hashable {
