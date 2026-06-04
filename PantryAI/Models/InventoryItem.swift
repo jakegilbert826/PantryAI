@@ -5,6 +5,7 @@ import Foundation
 struct ScannedItem: Identifiable, Hashable {
     let id = UUID()
     var name: String
+    var canonicalName: String
     var foodCategory: FoodCategory
     var brandName: String?
     var measureValue: Double

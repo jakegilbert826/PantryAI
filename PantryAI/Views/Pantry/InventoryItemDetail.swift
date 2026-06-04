@@ -6,12 +6,27 @@ struct InventoryItemDetail: View {
     @Environment(\.modelContext) private var context
 
     @State private var quantity: Double
+    @State private var initialQuantity: Double
     @State private var location: StorageLocation
+    @State private var draftQuantityText: String = ""
+    @State private var draftUnit: MeasureUnit
 
     init(item: InventoryItem) {
         self.item = item
-        _quantity = State(initialValue: item.measureValue ?? 1.0)
+        let pu = InventoryItem.inferPreferredUnit(containerType: item.containerType, measureType: item.measureType)
+        let initialQty: Double
+        switch pu {
+        case .container: initialQty = item.containerCount ?? 1.0
+        case .measure:   initialQty = item.measureValue ?? 1.0
+        }
+        _quantity = State(initialValue: initialQty)
+        _initialQuantity = State(initialValue: initialQty)
         _location = State(initialValue: item.storageLocation)
+        _draftUnit = State(initialValue: item.measureUnit)
+    }
+
+    private var preferredUnit: PreferredUnit {
+        InventoryItem.inferPreferredUnit(containerType: item.containerType, measureType: item.measureType)
     }
 
     var body: some View {
@@ -40,7 +55,7 @@ struct InventoryItemDetail: View {
                 .padding(.horizontal, 22)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    DisplayText(text: item.name, size: 40, italic: true)
+                    DisplayText(text: item.canonicalName, size: 40, italic: true)
                         .multilineTextAlignment(.leading)
                     Text("\(item.brandName ?? item.foodCategory.displayName) · \(item.storageLocation.displayName.lowercased())")
                         .font(.system(size: 13))
@@ -63,7 +78,11 @@ struct InventoryItemDetail: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            amountCard
+            if (item.measureValue ?? 0) <= 0 {
+                addAmountCard
+            } else {
+                amountCard
+            }
             HStack(alignment: .top, spacing: 12) {
                 useByCard
                 confidenceCard
@@ -81,7 +100,72 @@ struct InventoryItemDetail: View {
         .padding(.bottom, 28)
     }
 
+    // MARK: add amount card (shown when quantity is unknown)
+
+    private var addAmountCard: some View {
+        ChunkyCard(background: Theme.surface, shadowOffset: 4) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    CaptionText(text: "ADD AMOUNT")
+                    Spacer()
+                    Menu {
+                        ForEach(MeasureUnit.allCases, id: \.self) { unit in
+                            Button(unit.rawValue) { draftUnit = unit }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(draftUnit.rawValue.uppercased())
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.ink2)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Theme.ink2)
+                        }
+                    }
+                }
+                .padding(.bottom, 12)
+
+                TextField("0", text: $draftQuantityText)
+                    .keyboardType(.decimalPad)
+                    .font(.displayFallback(36, italic: true))
+                    .foregroundStyle(Theme.ink)
+                    .frame(height: 44)
+                    .padding(.bottom, 14)
+
+                Divider()
+                    .padding(.bottom, 12)
+
+                PillButton(title: "Save", icon: "checkmark", variant: .solid, size: .small) {
+                    saveQuantity()
+                }
+                .disabled((Double(draftQuantityText) ?? 0) <= 0)
+                .opacity((Double(draftQuantityText) ?? 0) > 0 ? 1 : 0.4)
+            }
+            .padding(16)
+        }
+    }
+
+    private func saveQuantity() {
+        guard let value = Double(draftQuantityText), value > 0 else { return }
+        item.measureValue = value
+        item.measureUnit = draftUnit
+        try? context.save()
+    }
+
     // MARK: amount card
+
+    private var unitCaption: String {
+        switch preferredUnit {
+        case .container:
+            let ct = item.containerType?.rawValue.uppercased() ?? "UNIT"
+            if let size = item.containerNominalSize, let unit = item.containerNominalUnit {
+                return "\(ct) (\(Int(size))\(unit.rawValue))"
+            }
+            return ct
+        case .measure:
+            return item.measureUnit.rawValue.uppercased()
+        }
+    }
 
     private var amountCard: some View {
         ChunkyCard(background: Theme.surface, shadowOffset: 4) {
@@ -89,7 +173,7 @@ struct InventoryItemDetail: View {
                 HStack {
                     CaptionText(text: "AMOUNT")
                     Spacer()
-                    CaptionText(text: item.measureUnit.rawValue.uppercased())
+                    CaptionText(text: unitCaption)
                 }
                 .padding(.bottom, 12)
 
@@ -105,10 +189,24 @@ struct InventoryItemDetail: View {
         }
     }
 
+    private var stepAmount: Double {
+        switch preferredUnit {
+        case .container: return 1.0
+        case .measure:
+            switch item.measureUnit {
+            case .g:          return 50.0
+            case .kg:         return 0.1
+            case .ml:         return 100.0
+            case .l:          return 0.1
+            case .unit, .bunch: return 1.0
+            }
+        }
+    }
+
     private var amountStepper: some View {
         HStack(spacing: 14) {
             Button {
-                quantity = max(0, quantity - 0.25)
+                quantity = max(0, quantity - stepAmount)
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 15, weight: .bold))
@@ -118,16 +216,11 @@ struct InventoryItemDetail: View {
             }
             .buttonStyle(.plain)
 
-            VStack(spacing: 2) {
-                DisplayText(text: quantityLabel, size: 36, italic: true)
-                Text(item.measureUnit.rawValue)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.ink2)
-            }
-            .frame(maxWidth: .infinity)
+            DisplayText(text: quantityLabel, size: 36, italic: true)
+                .frame(maxWidth: .infinity)
 
             Button {
-                quantity = min(1, quantity + 0.25)
+                quantity += stepAmount
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .bold))
@@ -142,9 +235,9 @@ struct InventoryItemDetail: View {
 
     private var presetChips: some View {
         HStack(spacing: 8) {
-            presetChip("Half left", danger: false) { quantity = 0.5 }
-            presetChip("Almost gone", danger: false) { quantity = 0.1 }
-            presetChip("Used it all", danger: true) { quantity = 0 }
+            presetChip("Half left",   danger: false) { quantity = (initialQuantity * 0.5).rounded(toDecimalPlaces: 1) }
+            presetChip("Almost gone", danger: false) { quantity = max(0, (initialQuantity * 0.1).rounded(toDecimalPlaces: 1)) }
+            presetChip("Used it all", danger: true)  { quantity = 0 }
         }
     }
 
@@ -333,11 +426,15 @@ struct InventoryItemDetail: View {
     // MARK: derived
 
     private var quantityLabel: String {
-        if quantity >= 1.0 { return "Full" }
-        if quantity >= 0.75 { return "¾" }
-        if quantity >= 0.5 { return "½" }
-        if quantity >= 0.25 { return "¼" }
-        return "Empty"
+        if quantity <= 0 { return "0" }
+        let numStr = quantity == quantity.rounded() ? "\(Int(quantity))" : String(format: "%.1f", quantity)
+        switch preferredUnit {
+        case .container:
+            let unit = item.containerType?.rawValue ?? item.measureUnit.rawValue
+            return "\(numStr) \(unit)"
+        case .measure:
+            return "\(numStr) \(item.measureUnit.rawValue)"
+        }
     }
 
     private var daysLeftEstimate: Int {
@@ -376,4 +473,11 @@ struct InventoryItemDetail: View {
     }
 
     private var sourceCount: Int { 1 + derivedSources.count }
+}
+
+private extension Double {
+    func rounded(toDecimalPlaces dp: Int) -> Double {
+        let factor = pow(10.0, Double(dp))
+        return (self * factor).rounded() / factor
+    }
 }

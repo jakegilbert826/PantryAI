@@ -89,7 +89,7 @@ final class InventoryItemTests: XCTestCase {
 
     func testScannedItemDefaultsToIncluded() {
         let scanned = ScannedItem(
-            name: "Eggs", foodCategory: .dairy, brandName: nil,
+            name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
             measureValue: 1.0, measureUnit: .unit, confidence: 0.8
         )
         XCTAssertTrue(scanned.include)

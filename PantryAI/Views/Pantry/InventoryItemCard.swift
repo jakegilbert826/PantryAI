@@ -25,7 +25,7 @@ struct InventoryItemCard: View {
     private func cardContent(confidence: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionText(text: item.storageLocation.displayName, color: Theme.ink2)
-            DisplayText(text: item.name, size: 19)
+            DisplayText(text: item.canonicalName, size: 19)
                 .lineLimit(2)
             Text(subtitle)
                 .font(.system(size: 12))
@@ -33,9 +33,11 @@ struct InventoryItemCard: View {
                 .lineLimit(1)
             Spacer(minLength: 4)
             HStack(alignment: .bottom) {
-                Text("\(Int(confidence * 100))%")
-                    .font(.displayFallback(22, italic: true))
-                    .foregroundStyle(Theme.ink)
+                if let qty = quantityDisplay {
+                    Text(qty)
+                        .font(.displayFallback(22, italic: true))
+                        .foregroundStyle(Theme.ink)
+                }
                 Spacer()
                 Ring(percentage: confidence, size: 32, stroke: 4)
             }
@@ -57,13 +59,14 @@ struct InventoryItemCard: View {
         )
     }
 
+    private var quantityDisplay: String? {
+        guard let value = item.measureValue, value > 0 else { return nil }
+        let numStr = value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
+        return "\(numStr) \(item.measureUnit.rawValue)"
+    }
+
     private var subtitle: String {
-        var parts: [String] = []
-        if let brand = item.brandName { parts.append(brand) }
-        if let value = item.measureValue {
-            parts.append("\(Int(value * 100))% \(item.measureUnit.rawValue)")
-        }
-        if parts.isEmpty { parts.append(item.foodCategory.displayName.lowercased()) }
-        return parts.joined(separator: " · ")
+        if let brand = item.brandName { return brand }
+        return item.foodCategory.displayName.lowercased()
     }
 }

@@ -110,6 +110,18 @@ final class InventoryItem {
     }
 }
 
+extension InventoryItem {
+    static func inferPreferredUnit(
+        containerType: ContainerType?,
+        measureType: MeasureType
+    ) -> PreferredUnit {
+        // TODO: consult remote food-reference table for category-specific defaults
+        if containerType != nil { return .container }
+        if measureType == .count || measureType == .bunch { return .container }
+        return .measure
+    }
+}
+
 @Model
 final class ItemQuantityLog {
     @Attribute(.unique) var id: UUID

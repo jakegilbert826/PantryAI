@@ -88,6 +88,7 @@ final class ScanViewModel {
         let items: [InventoryItem] = included.map {
             InventoryItem(
                 name: $0.name,
+                canonicalName: $0.canonicalName,
                 brandName: $0.brandName,
                 foodCategory: $0.foodCategory,
                 measureType: MeasureType.from($0.measureUnit),
@@ -117,7 +118,7 @@ final class ScanViewModel {
     private func mergeDuplicates(_ items: [ScannedItem]) -> [ScannedItem] {
         var keyed: [String: ScannedItem] = [:]
         for item in items {
-            let key = item.name.lowercased()
+            let key = item.canonicalName.lowercased()
             if let existing = keyed[key] {
                 if item.confidence > existing.confidence { keyed[key] = item }
             } else {

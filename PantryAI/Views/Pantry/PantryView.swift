@@ -53,7 +53,7 @@ struct PantryView: View {
         ChunkyCard(background: Theme.amber, radius: Theme.bigCardRadius) {
             VStack(alignment: .leading, spacing: 12) {
                 CaptionText(text: "USE FIRST · \(items.count) ITEMS", color: Theme.ink2)
-                let headline = items.prefix(2).map(\.name).joined(separator: " & ")
+                let headline = items.prefix(2).map(\.canonicalName).joined(separator: " & ")
                 Text("\(headline)\n\(items.count > 1 ? "are" : "is") fading fast.")
                     .font(.displayFallback(28, italic: true))
                     .foregroundStyle(Theme.ink)

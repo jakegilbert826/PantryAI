@@ -66,6 +66,13 @@ enum PackagingCategory: String, Codable, Hashable {
     case canned, dried, frozen, fresh, beverage, condiment
 }
 
+// MARK: - Preferred display mode
+
+enum PreferredUnit {
+    case container
+    case measure
+}
+
 // MARK: - Measure
 
 enum MeasureType: String, Codable, Hashable {
@@ -81,7 +88,7 @@ enum MeasureType: String, Codable, Hashable {
     }
 }
 
-enum MeasureUnit: String, Codable, Hashable {
+enum MeasureUnit: String, CaseIterable, Codable, Hashable {
     case g, kg, ml, l, unit, bunch
 
     static func from(_ string: String?) -> MeasureUnit {

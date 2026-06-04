@@ -39,6 +39,7 @@ final class InventoryService {
             if let match = existing.first(where: {
                 $0.name.caseInsensitiveCompare(item.name) == .orderedSame
             }) {
+                match.canonicalName = item.canonicalName
                 match.brandName = item.brandName
                 match.foodCategory = item.foodCategory
                 match.packagingCategory = item.packagingCategory
