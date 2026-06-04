@@ -42,10 +42,10 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         SupabaseURL: $(SUPABASE_URL)
         SupabaseAnonKey: $(SUPABASE_ANON_KEY)
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
     settings:
-      configFiles:
-        Debug: Config.xcconfig
-        Release: Config.xcconfig
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.pantry.PantryAI
         TARGETED_DEVICE_FAMILY: "1"

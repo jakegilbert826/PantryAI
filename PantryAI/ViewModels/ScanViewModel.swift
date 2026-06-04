@@ -85,26 +85,62 @@ final class ScanViewModel {
 
     func commit() {
         let included = detected.filter { $0.include }
-        let items: [InventoryItem] = included.map {
-            InventoryItem(
-                name: $0.name,
-                canonicalName: $0.canonicalName,
-                brandName: $0.brandName,
-                foodCategory: $0.foodCategory,
-                measureType: MeasureType.from($0.measureUnit),
-                measureValue: $0.measureValue,
-                measureUnit: $0.measureUnit,
-                measureConfidence: $0.confidence,
+        Task { await commit(included) }
+    }
+
+    private func commit(_ included: [ScannedItem]) async {
+        var items: [InventoryItem] = []
+        for scanned in included {
+            let item = InventoryItem(
+                name: scanned.name,
+                canonicalName: scanned.canonicalName,
+                brandName: scanned.brandName,
+                foodCategory: scanned.foodCategory,
+                measureType: MeasureType.from(scanned.measureUnit),
+                measureValue: scanned.measureValue,
+                measureUnit: scanned.measureUnit,
+                measureConfidence: scanned.confidence,
                 informationSource: .pantryScan,
                 lastScannedAt: .now
             )
+            await applyReferenceDefaults(to: item)
+            items.append(item)
         }
         do {
             try inventory.upsert(items)
-            Task { await inventory.pushUpsert(items) }
             stage = .done
+            await inventory.pushUpsert(items)
         } catch {
             self.error = .decoding(String(describing: error))
+        }
+    }
+
+    /// Seed container metadata and the display lens from the remote
+    /// food_reference table, only filling fields the scan didn't determine.
+    /// Falls back to a heuristic when no reference row exists (offline / unknown).
+    private func applyReferenceDefaults(to item: InventoryItem) async {
+        guard let ref = await FoodReferenceService.shared.lookup(canonicalName: item.canonicalName) else {
+            item.preferredUnit = InventoryItem.inferPreferredUnit(
+                containerType: item.containerType,
+                measureType: item.measureType
+            )
+            item.stepperType = Self.defaultStepperType(for: item.measureType)
+            return
+        }
+        item.preferredUnit = ref.defaultPreferredUnit
+        item.stepperType = ref.stepperType
+        item.packagingCategory = ref.defaultPackagingCategory
+        item.storageLocation = ref.defaultStorageLocation
+        if item.containerType == nil { item.containerType = ref.defaultContainerType }
+        if item.containerNominalSize == nil { item.containerNominalSize = ref.defaultContainerNominalSize }
+        if item.containerNominalUnit == nil { item.containerNominalUnit = ref.defaultContainerNominalUnit }
+        if item.decayRateOverride == nil { item.decayRateOverride = ref.decayRateDays }
+    }
+
+    private static func defaultStepperType(for measureType: MeasureType) -> StepperType {
+        switch measureType {
+        case .count, .bunch:   return .count
+        case .weight, .volume: return .weightVolume
         }
     }
 

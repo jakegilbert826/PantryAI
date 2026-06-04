@@ -32,6 +32,22 @@ final class InventoryItem {
     var containerNominalUnit: NominalUnit?
     var containerDisplayFraction: Bool
 
+    // display / editing preference (seeded from food_reference, user-overridable).
+    // Stored optional so SwiftData lightweight migration of items created before
+    // these columns existed leaves them nil instead of trapping on a non-optional
+    // enum cast; exposed as non-optional via the computed accessors below.
+    private var preferredUnitRaw: PreferredUnit?
+    private var stepperTypeRaw: StepperType?
+
+    var preferredUnit: PreferredUnit {
+        get { preferredUnitRaw ?? .measure }
+        set { preferredUnitRaw = newValue }
+    }
+    var stepperType: StepperType {
+        get { stepperTypeRaw ?? .weightVolume }
+        set { stepperTypeRaw = newValue }
+    }
+
     // decay model
     var openedAt: Date?
     var decayRateOverride: Double?
@@ -70,6 +86,8 @@ final class InventoryItem {
         containerNominalSize: Double? = nil,
         containerNominalUnit: NominalUnit? = nil,
         containerDisplayFraction: Bool = false,
+        preferredUnit: PreferredUnit = .measure,
+        stepperType: StepperType = .weightVolume,
         openedAt: Date? = nil,
         decayRateOverride: Double? = nil,
         informationSource: InformationSource = .manual,
@@ -98,6 +116,8 @@ final class InventoryItem {
         self.containerNominalSize = containerNominalSize
         self.containerNominalUnit = containerNominalUnit
         self.containerDisplayFraction = containerDisplayFraction
+        self.preferredUnitRaw = preferredUnit
+        self.stepperTypeRaw = stepperType
         self.openedAt = openedAt
         self.decayRateOverride = decayRateOverride
         self.informationSource = informationSource
