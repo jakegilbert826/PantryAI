@@ -1,0 +1,5 @@
+// Template — copy to Config.xcconfig and fill in real values.
+// Config.xcconfig is git-ignored and never committed.
+
+SUPABASE_URL = https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY = your-anon-key-here

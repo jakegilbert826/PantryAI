@@ -68,7 +68,7 @@ enum PackagingCategory: String, Codable, Hashable {
 
 // MARK: - Preferred display mode
 
-enum PreferredUnit {
+enum PreferredUnit: String, Codable {
     case container
     case measure
 }
@@ -105,6 +105,12 @@ enum ContainerType: String, Codable, Hashable {
 
 enum NominalUnit: String, Codable, Hashable {
     case g, ml
+}
+
+enum StepperType: String, Codable, Hashable {
+    case container
+    case count
+    case weightVolume = "weight_volume"
 }
 
 // MARK: - Provenance

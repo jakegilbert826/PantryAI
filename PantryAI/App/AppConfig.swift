@@ -37,6 +37,15 @@ enum AppConfig {
         UserDefaults.standard.bool(forKey: Keys.showDecayModelDebug)
     }
 
+    static var supabaseURL: URL {
+        let str = Bundle.main.infoDictionary?["SupabaseURL"] as? String ?? ""
+        return URL(string: str) ?? URL(string: "https://placeholder.supabase.co")!
+    }
+
+    static var supabaseAnonKey: String {
+        Bundle.main.infoDictionary?["SupabaseAnonKey"] as? String ?? ""
+    }
+
     enum Keys {
         static let baseURL = "AppConfig.baseURL"
         static let geminiModel = "AppConfig.geminiModel"

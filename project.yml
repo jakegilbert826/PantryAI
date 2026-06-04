@@ -40,7 +40,12 @@ targets:
         NSCameraUsageDescription: Pantry uses the camera to scan your fridge, freezer, and pantry shelves so it can identify what you have.
         NSPhotoLibraryAddUsageDescription: Pantry can save captured shelf photos for your scan history.
         ITSAppUsesNonExemptEncryption: false
+        SupabaseURL: $(SUPABASE_URL)
+        SupabaseAnonKey: $(SUPABASE_ANON_KEY)
     settings:
+      configFiles:
+        Debug: Config.xcconfig
+        Release: Config.xcconfig
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.pantry.PantryAI
         TARGETED_DEVICE_FAMILY: "1"
