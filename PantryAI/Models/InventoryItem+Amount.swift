@@ -74,9 +74,9 @@ extension InventoryItem {
             return 1
         case .measure:
             switch measureUnit {
-            case .g:            return 50
+            case .g:            return 10
             case .kg:           return 0.1
-            case .ml:           return 100
+            case .ml:           return 10
             case .l:            return 0.1
             case .unit, .bunch: return 1
             }

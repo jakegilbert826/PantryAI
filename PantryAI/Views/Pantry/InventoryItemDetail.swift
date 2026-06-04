@@ -241,6 +241,17 @@ struct InventoryItemDetail: View {
         try? context.save()
     }
 
+    /// Steps the amount up/down by `stepAmount`, snapping to the next clean
+    /// multiple of the step rather than offsetting an "untidy" current value
+    /// (e.g. 173 → 180 / 170, not 183 / 163).
+    private func stepQuantity(up: Bool) {
+        let step = stepAmount
+        guard step > 0 else { return }
+        let ratio = quantity / step
+        let index = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
+        setQuantity(index * step)
+    }
+
     private func setLens(_ unit: PreferredUnit) {
         item.preferredUnit = unit
         item.updatedAt = .now
@@ -275,7 +286,7 @@ struct InventoryItemDetail: View {
     private var amountStepper: some View {
         HStack(spacing: 14) {
             Button {
-                setQuantity(quantity - stepAmount)
+                stepQuantity(up: false)
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 15, weight: .bold))
@@ -289,7 +300,7 @@ struct InventoryItemDetail: View {
                 .frame(maxWidth: .infinity)
 
             Button {
-                setQuantity(quantity + stepAmount)
+                stepQuantity(up: true)
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .bold))
