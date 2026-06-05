@@ -115,33 +115,11 @@ final class ScanViewModel {
         }
     }
 
-    /// Seed container metadata and the display lens from the remote
-    /// food_reference table, only filling fields the scan didn't determine.
-    /// Falls back to a heuristic when no reference row exists (offline / unknown).
     private func applyReferenceDefaults(to item: InventoryItem) async {
-        guard let ref = await FoodReferenceService.shared.lookup(canonicalName: item.canonicalName) else {
-            item.preferredUnit = InventoryItem.inferPreferredUnit(
-                containerType: item.containerType,
-                measureType: item.measureType
-            )
-            item.stepperType = Self.defaultStepperType(for: item.measureType)
-            return
-        }
-        item.preferredUnit = ref.defaultPreferredUnit
-        item.stepperType = ref.stepperType
+        guard let ref = await FoodReferenceService.shared.lookup(canonicalName: item.canonicalName) else { return }
         item.packagingCategory = ref.defaultPackagingCategory
         item.storageLocation = ref.defaultStorageLocation
-        if item.containerType == nil { item.containerType = ref.defaultContainerType }
-        if item.containerNominalSize == nil { item.containerNominalSize = ref.defaultContainerNominalSize }
-        if item.containerNominalUnit == nil { item.containerNominalUnit = ref.defaultContainerNominalUnit }
         if item.decayRateOverride == nil { item.decayRateOverride = ref.decayRateDays }
-    }
-
-    private static func defaultStepperType(for measureType: MeasureType) -> StepperType {
-        switch measureType {
-        case .count, .bunch:   return .count
-        case .weight, .volume: return .weightVolume
-        }
     }
 
     func reset() {

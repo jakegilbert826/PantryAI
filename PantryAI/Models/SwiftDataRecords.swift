@@ -17,36 +17,12 @@ final class InventoryItem {
     var foodCategory: FoodCategory
     var storageLocation: StorageLocation
     var storageSubLocation: String?
-
+ 
     // measure
     var measureType: MeasureType
     var measureValue: Double?
     var measureUnit: MeasureUnit
     var measureConfidence: Double
-    var measureDisplayFraction: Bool
-
-    // container
-    var containerType: ContainerType?
-    var containerCount: Double?
-    var containerNominalSize: Double?
-    var containerNominalUnit: NominalUnit?
-    var containerDisplayFraction: Bool
-
-    // display / editing preference (seeded from food_reference, user-overridable).
-    // Stored optional so SwiftData lightweight migration of items created before
-    // these columns existed leaves them nil instead of trapping on a non-optional
-    // enum cast; exposed as non-optional via the computed accessors below.
-    private var preferredUnitRaw: PreferredUnit?
-    private var stepperTypeRaw: StepperType?
-
-    var preferredUnit: PreferredUnit {
-        get { preferredUnitRaw ?? .measure }
-        set { preferredUnitRaw = newValue }
-    }
-    var stepperType: StepperType {
-        get { stepperTypeRaw ?? .weightVolume }
-        set { stepperTypeRaw = newValue }
-    }
 
     // decay model
     var openedAt: Date?
@@ -80,14 +56,6 @@ final class InventoryItem {
         measureValue: Double? = nil,
         measureUnit: MeasureUnit = .unit,
         measureConfidence: Double,
-        measureDisplayFraction: Bool = false,
-        containerType: ContainerType? = nil,
-        containerCount: Double? = nil,
-        containerNominalSize: Double? = nil,
-        containerNominalUnit: NominalUnit? = nil,
-        containerDisplayFraction: Bool = false,
-        preferredUnit: PreferredUnit = .measure,
-        stepperType: StepperType = .weightVolume,
         openedAt: Date? = nil,
         decayRateOverride: Double? = nil,
         informationSource: InformationSource = .manual,
@@ -110,14 +78,6 @@ final class InventoryItem {
         self.measureValue = measureValue
         self.measureUnit = measureUnit
         self.measureConfidence = measureConfidence
-        self.measureDisplayFraction = measureDisplayFraction
-        self.containerType = containerType
-        self.containerCount = containerCount
-        self.containerNominalSize = containerNominalSize
-        self.containerNominalUnit = containerNominalUnit
-        self.containerDisplayFraction = containerDisplayFraction
-        self.preferredUnitRaw = preferredUnit
-        self.stepperTypeRaw = stepperType
         self.openedAt = openedAt
         self.decayRateOverride = decayRateOverride
         self.informationSource = informationSource
@@ -131,14 +91,33 @@ final class InventoryItem {
 }
 
 extension InventoryItem {
-    static func inferPreferredUnit(
-        containerType: ContainerType?,
-        measureType: MeasureType
-    ) -> PreferredUnit {
-        // TODO: consult remote food-reference table for category-specific defaults
-        if containerType != nil { return .container }
-        if measureType == .count || measureType == .bunch { return .container }
-        return .measure
+    static func migrateBaseUnits(in context: ModelContext) {
+        let items = (try? context.fetch(FetchDescriptor<InventoryItem>())) ?? []
+        var changed = false
+        for item in items {
+            switch item.measureUnit {
+            case .kg:
+                item.measureValue = (item.measureValue ?? 0) * 1000
+                item.measureUnit = .g
+                item.measureType = .weight
+                changed = true
+            case .l:
+                item.measureValue = (item.measureValue ?? 0) * 1000
+                item.measureUnit = .ml
+                item.measureType = .volume
+                changed = true
+            case .bunch:
+                item.measureUnit = .unit
+                item.measureType = .count
+                changed = true
+            default:
+                if item.measureType == .bunch {
+                    item.measureType = .count
+                    changed = true
+                }
+            }
+        }
+        if changed { try? context.save() }
     }
 }
 
@@ -153,8 +132,6 @@ final class ItemQuantityLog {
     var measureValue: Double?
     var measureUnit: MeasureUnit
     var measureConfidence: Double
-    var containerType: ContainerType?
-    var containerCount: Double?
 
     // provenance
     var source: LogSource
@@ -168,8 +145,6 @@ final class ItemQuantityLog {
         measureValue: Double?,
         measureUnit: MeasureUnit,
         measureConfidence: Double,
-        containerType: ContainerType? = nil,
-        containerCount: Double? = nil,
         source: LogSource = .manual,
         sourceRef: String? = nil
     ) {
@@ -180,8 +155,6 @@ final class ItemQuantityLog {
         self.measureValue = measureValue
         self.measureUnit = measureUnit
         self.measureConfidence = measureConfidence
-        self.containerType = containerType
-        self.containerCount = containerCount
         self.source = source
         self.sourceRef = sourceRef
     }

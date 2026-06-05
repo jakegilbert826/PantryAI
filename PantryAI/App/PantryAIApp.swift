@@ -30,6 +30,9 @@ struct PantryAIApp: App {
             RootView()
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)
+                .onAppear {
+                    InventoryItem.migrateBaseUnits(in: sharedModelContainer.mainContext)
+                }
         }
         .modelContainer(sharedModelContainer)
     }

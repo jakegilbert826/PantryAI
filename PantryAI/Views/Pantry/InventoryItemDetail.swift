@@ -10,6 +10,7 @@ struct InventoryItemDetail: View {
     @State private var location: StorageLocation
     @State private var draftQuantityText: String = ""
     @State private var draftUnit: MeasureUnit
+    @State private var isEditingQuantity = false
 
     init(item: InventoryItem) {
         self.item = item
@@ -22,9 +23,6 @@ struct InventoryItemDetail: View {
         _draftUnit = State(initialValue: item.measureUnit)
     }
 
-    // Stored, user-overridable lens (seeded from food_reference at creation).
-    private var preferredUnit: PreferredUnit { item.preferredUnit }
-
     var body: some View {
         VStack(spacing: 0) {
             hero
@@ -32,7 +30,10 @@ struct InventoryItemDetail: View {
         }
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
-        .onDisappear { logConsumptionIfNeeded() }
+        .onDisappear {
+            saveLocationIfNeeded()
+            logConsumptionIfNeeded()
+        }
     }
 
     // MARK: hero
@@ -54,7 +55,7 @@ struct InventoryItemDetail: View {
                 VStack(alignment: .leading, spacing: 6) {
                     DisplayText(text: item.canonicalName, size: 40, italic: true)
                         .multilineTextAlignment(.leading)
-                    Text("\(item.brandName ?? item.foodCategory.displayName) · \(item.storageLocation.displayName.lowercased())")
+                    Text("\(item.brandName ?? item.foodCategory.displayName) · \(location.displayName.lowercased())")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink2)
                 }
@@ -80,15 +81,14 @@ struct InventoryItemDetail: View {
             } else {
                 amountCard
             }
-            HStack(alignment: .top, spacing: 12) {
-                useByCard
-                confidenceCard
+            Grid(horizontalSpacing: 12) {
+                GridRow(alignment: .top) {
+                    useByCard
+                    addToListCard
+                }
             }
             locationCard
             sourcesCard
-            if item.isLow {
-                lowStockBanner
-            }
             Spacer()
             PillButton(title: "Find recipes using this", icon: "arrow.right", variant: .solid) {}
         }
@@ -99,6 +99,14 @@ struct InventoryItemDetail: View {
 
     // MARK: add amount card (shown when quantity is unknown)
 
+    private var inputUnits: [MeasureUnit] {
+        switch item.measureType {
+        case .weight:       return [.g, .kg]
+        case .volume:       return [.ml, .l]
+        case .count, .bunch: return [.unit]
+        }
+    }
+
     private var addAmountCard: some View {
         ChunkyCard(background: Theme.surface, shadowOffset: 4) {
             VStack(alignment: .leading, spacing: 0) {
@@ -106,7 +114,7 @@ struct InventoryItemDetail: View {
                     CaptionText(text: "ADD AMOUNT")
                     Spacer()
                     Menu {
-                        ForEach(MeasureUnit.allCases, id: \.self) { unit in
+                        ForEach(inputUnits, id: \.self) { unit in
                             Button(unit.rawValue) { draftUnit = unit }
                         }
                     } label: {
@@ -143,10 +151,16 @@ struct InventoryItemDetail: View {
     }
 
     private func saveQuantity() {
-        guard let value = Double(draftQuantityText), value > 0 else { return }
+        guard let raw = Double(draftQuantityText), raw > 0 else { return }
+        let (value, unit): (Double, MeasureUnit) = switch draftUnit {
+            case .kg: (raw * 1000, .g)
+            case .l:  (raw * 1000, .ml)
+            default:  (raw, draftUnit)
+        }
         item.measureValue = value
-        item.measureUnit = draftUnit
-        item.measureType = MeasureType.from(draftUnit)
+        item.measureUnit = unit
+        item.measureType = MeasureType.from(unit)
+        item.informationSource = .manual
         item.updatedAt = .now
         quantity = value
         initialQuantity = value
@@ -155,43 +169,18 @@ struct InventoryItemDetail: View {
 
     // MARK: amount card
 
-    private var unitCaption: String {
-        switch preferredUnit {
-        case .container:
-            let ct = item.containerType?.rawValue.uppercased() ?? "UNIT"
-            if let size = item.containerNominalSize, let unit = item.containerNominalUnit {
-                return "\(ct) (\(Int(size))\(unit.rawValue))"
-            }
-            return ct
-        case .measure:
-            return item.measureUnit.rawValue.uppercased()
-        }
-    }
-
     private var amountCard: some View {
         ChunkyCard(background: Theme.surface, shadowOffset: 4) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     CaptionText(text: "AMOUNT")
                     Spacer()
-                    if item.supportsContainerLens {
-                        lensToggle
-                    } else {
-                        CaptionText(text: unitCaption)
-                    }
+                    CaptionText(text: item.displayUnitLabel)
                 }
                 .padding(.bottom, 12)
 
                 amountStepper
-                    .padding(.bottom, item.amountDisplay.secondary == nil ? 14 : 4)
-
-                if let sub = item.amountDisplay.secondary {
-                    Text(sub)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.ink2)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 14)
-                }
+                    .padding(.bottom, 14)
 
                 Divider()
                     .padding(.bottom, 12)
@@ -202,33 +191,6 @@ struct InventoryItemDetail: View {
         }
     }
 
-    private var stepAmount: Double { item.amountStepSize }
-
-    // MARK: lens toggle (By amount / By container)
-
-    private var lensToggle: some View {
-        HStack(spacing: 2) {
-            lensButton("Amount", .measure)
-            lensButton("Container", .container)
-        }
-        .padding(2)
-        .background(Capsule(style: .continuous).fill(Theme.bg))
-        .overlay(Capsule(style: .continuous).stroke(Theme.ink, lineWidth: 1))
-    }
-
-    private func lensButton(_ label: String, _ unit: PreferredUnit) -> some View {
-        let selected = item.preferredUnit == unit
-        return Button { setLens(unit) } label: {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(selected ? Theme.bg : Theme.ink2)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(Capsule(style: .continuous).fill(selected ? Theme.ink : Color.clear))
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: persistence
 
     /// Write the edited amount straight through to the model (fixes the prior
@@ -237,6 +199,7 @@ struct InventoryItemDetail: View {
         let clamped = max(0, newValue)
         quantity = clamped
         item.measureValue = clamped
+        item.informationSource = .manual
         item.updatedAt = .now
         try? context.save()
     }
@@ -245,22 +208,24 @@ struct InventoryItemDetail: View {
     /// multiple of the step rather than offsetting an "untidy" current value
     /// (e.g. 173 → 180 / 170, not 183 / 163).
     private func stepQuantity(up: Bool) {
-        let step = stepAmount
+        let step = item.amountStepSize
         guard step > 0 else { return }
         let ratio = quantity / step
-        let index = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
+        let index: Double = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
         setQuantity(index * step)
-    }
-
-    private func setLens(_ unit: PreferredUnit) {
-        item.preferredUnit = unit
-        item.updatedAt = .now
-        try? context.save()
     }
 
     /// Records net consumption once when leaving the screen. Usage logs are in
     /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
     /// the consumed proportion of the amount present when the card opened.
+    private func saveLocationIfNeeded() {
+        guard location != item.storageLocation else { return }
+        item.storageLocation = location
+        item.informationSource = .manual
+        item.updatedAt = .now
+        try? context.save()
+    }
+
     private func logConsumptionIfNeeded() {
         let start = initialQuantity
         let finalQty = item.measureValue ?? 0
@@ -273,8 +238,6 @@ struct InventoryItemDetail: View {
             measureValue: fraction,
             measureUnit: item.measureUnit,
             measureConfidence: item.measureConfidence,
-            containerType: item.containerType,
-            containerCount: item.derivedContainerCount,
             source: .manual
         )
         context.insert(log)
@@ -286,6 +249,7 @@ struct InventoryItemDetail: View {
     private var amountStepper: some View {
         HStack(spacing: 14) {
             Button {
+                isEditingQuantity = false
                 stepQuantity(up: false)
             } label: {
                 Image(systemName: "minus")
@@ -296,10 +260,22 @@ struct InventoryItemDetail: View {
             }
             .buttonStyle(.plain)
 
-            DisplayText(text: quantityLabel, size: 36, italic: true)
-                .frame(maxWidth: .infinity)
+            if isEditingQuantity {
+                TextField("", text: $draftQuantityText)
+                    .keyboardType(.decimalPad)
+                    .font(.displayFallback(36, italic: true))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { commitInlineEdit() }
+            } else {
+                DisplayText(text: quantityLabel, size: 36, italic: true)
+                    .frame(maxWidth: .infinity)
+                    .onTapGesture { beginInlineEdit() }
+            }
 
             Button {
+                isEditingQuantity = false
                 stepQuantity(up: true)
             } label: {
                 Image(systemName: "plus")
@@ -311,6 +287,31 @@ struct InventoryItemDetail: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func beginInlineEdit() {
+        let v = quantity
+        let displayValue: Double = switch item.measureUnit {
+            case .g  where v >= 1000: v / 1000
+            case .ml where v >= 1000: v / 1000
+            default: v
+        }
+        draftQuantityText = InventoryItem.formatNumber(displayValue)
+        isEditingQuantity = true
+    }
+
+    private func commitInlineEdit() {
+        guard let raw = Double(draftQuantityText), raw > 0 else {
+            isEditingQuantity = false
+            return
+        }
+        let value: Double = switch item.measureUnit {
+            case .g  where quantity >= 1000: raw * 1000
+            case .ml where quantity >= 1000: raw * 1000
+            default: raw
+        }
+        setQuantity(value)
+        isEditingQuantity = false
     }
 
     private var presetChips: some View {
@@ -372,19 +373,32 @@ struct InventoryItemDetail: View {
         .frame(height: 12)
     }
 
-    private var confidenceCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            CaptionText(text: "CONFIDENCE")
-            DisplayText(text: "\(Int(item.currentConfidence * 100))%", size: 26, italic: true)
-                .padding(.vertical, 4)
-            Text("Best guess from \(sourceCount) source\(sourceCount == 1 ? "" : "s")")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.ink2)
-                .lineLimit(2)
+    private var addToListCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CaptionText(text: "ADD TO LIST")
+            Spacer()
+            HStack(spacing: 8) {
+                Button {} label: {
+                    Image(systemName: "cart.badge.plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.bg)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink))
+                }
+                .buttonStyle(.plain)
+                Button {} label: {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.bg)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.sky))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.amber))
         .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
     }
 
@@ -443,7 +457,11 @@ struct InventoryItemDetail: View {
             CaptionText(text: "WHERE THIS CAME FROM")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
+                    if item.informationSource == .inChat {
+                        sourceChip(icon: "bubble.left", label: "You, in chat", when: relativeScanDate)
+                    } else {
+                        sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
+                    }
                     ForEach(derivedSources, id: \.label) { src in
                         sourceChip(icon: src.icon, label: src.label, when: src.when)
                     }
@@ -482,31 +500,9 @@ struct InventoryItemDetail: View {
         .background(Capsule().fill(Theme.bg).overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth)))
     }
 
-    // MARK: low stock banner
-
-    private var lowStockBanner: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                CaptionText(text: "RUNNING LOW")
-                Text("Only \(quantityLabel) left — top up?")
-                    .font(.displayFallback(14))
-                    .foregroundStyle(Theme.ink)
-            }
-            Spacer()
-            PillButton(title: "Add to list", icon: "plus", variant: .solid, size: .small) {}
-                .fixedSize()
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.amber))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.ink).offset(y: 4))
-    }
-
     // MARK: derived
 
-    // Single shared formatter so the card and detail can never disagree.
-    private var quantityLabel: String { item.amountDisplay.primary }
+    private var quantityLabel: String { item.amountDisplay }
 
     private var daysLeftEstimate: Int {
         let model = item.decayModel
@@ -534,7 +530,7 @@ struct InventoryItemDetail: View {
 
     private var derivedSources: [DerivedSource] {
         var sources: [DerivedSource] = []
-        if item.quantityLog.contains(where: { $0.source == .manual }) {
+        if item.informationSource == .manual || item.quantityLog.contains(where: { $0.source == .manual }) {
             sources.append(.init(icon: "hand.tap", label: "You, in app", when: ""))
         }
         if item.quantityLog.contains(where: { $0.source == .usageLog }) {
@@ -543,7 +539,6 @@ struct InventoryItemDetail: View {
         return sources
     }
 
-    private var sourceCount: Int { 1 + derivedSources.count }
 }
 
 private extension Double {
