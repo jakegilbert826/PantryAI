@@ -78,15 +78,14 @@ struct InventoryItemDetail: View {
             } else {
                 amountCard
             }
-            HStack(alignment: .top, spacing: 12) {
-                useByCard
-                confidenceCard
+            Grid(horizontalSpacing: 12) {
+                GridRow(alignment: .top) {
+                    useByCard
+                    addToListCard
+                }
             }
             locationCard
             sourcesCard
-            if item.isLow {
-                lowStockBanner
-            }
             Spacer()
             PillButton(title: "Find recipes using this", icon: "arrow.right", variant: .solid) {}
         }
@@ -361,19 +360,32 @@ struct InventoryItemDetail: View {
         .frame(height: 12)
     }
 
-    private var confidenceCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            CaptionText(text: "CONFIDENCE")
-            DisplayText(text: "\(Int(item.currentConfidence * 100))%", size: 26, italic: true)
-                .padding(.vertical, 4)
-            Text("Best guess from \(sourceCount) source\(sourceCount == 1 ? "" : "s")")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.ink2)
-                .lineLimit(2)
+    private var addToListCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CaptionText(text: "ADD TO LIST")
+            Spacer()
+            HStack(spacing: 8) {
+                Button {} label: {
+                    Image(systemName: "cart.badge.plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.bg)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink))
+                }
+                .buttonStyle(.plain)
+                Button {} label: {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.bg)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.sky))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.amber))
         .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
     }
 
@@ -471,27 +483,6 @@ struct InventoryItemDetail: View {
         .background(Capsule().fill(Theme.bg).overlay(Capsule().stroke(Theme.ink, lineWidth: Theme.strokeWidth)))
     }
 
-    // MARK: low stock banner
-
-    private var lowStockBanner: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                CaptionText(text: "RUNNING LOW")
-                Text("Only \(quantityLabel) left — top up?")
-                    .font(.displayFallback(14))
-                    .foregroundStyle(Theme.ink)
-            }
-            Spacer()
-            PillButton(title: "Add to list", icon: "plus", variant: .solid, size: .small) {}
-                .fixedSize()
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.amber))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.ink, lineWidth: Theme.strokeWidth))
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.ink).offset(y: 4))
-    }
-
     // MARK: derived
 
     private var quantityLabel: String { item.amountDisplay }
@@ -531,7 +522,6 @@ struct InventoryItemDetail: View {
         return sources
     }
 
-    private var sourceCount: Int { 1 + derivedSources.count }
 }
 
 private extension Double {
