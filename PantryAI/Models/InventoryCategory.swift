@@ -94,7 +94,7 @@ enum MeasureUnit: String, CaseIterable, Codable, Hashable {
 // MARK: - Provenance
 
 enum InformationSource: String, Codable, Hashable {
-    case pantryScan, receipt, barcode, manual, inChat
+    case pantryScan, receipt, receiptSync, barcode, manual, inChat
 }
 
 enum RemovalReason: String, Codable, Hashable {
