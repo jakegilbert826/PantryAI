@@ -125,6 +125,13 @@ final class RecipesViewModel {
                 measureConfidence: 1.0,
                 informationSource: .inChat
             )
+            if let ref = await FoodReferenceService.shared.lookup(canonicalName: name.lowercased()) {
+                item.measureUnit = ref.defaultMeasureUnit
+                item.measureType = ref.defaultMeasureType
+                item.packagingCategory = ref.defaultPackagingCategory
+                item.storageLocation = ref.defaultStorageLocation
+                if item.decayRateOverride == nil { item.decayRateOverride = ref.decayRateDays }
+            }
             try? inventory.upsert([item])
         }
     }

@@ -120,6 +120,10 @@ final class ScanViewModel {
         item.packagingCategory = ref.defaultPackagingCategory
         item.storageLocation = ref.defaultStorageLocation
         if item.decayRateOverride == nil { item.decayRateOverride = ref.decayRateDays }
+        if item.measureValue == nil {
+            item.measureUnit = ref.defaultMeasureUnit
+            item.measureType = ref.defaultMeasureType
+        }
     }
 
     func reset() {

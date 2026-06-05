@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct InventoryItemDetail: View {
     let item: InventoryItem
@@ -50,6 +51,9 @@ struct InventoryItemDetail: View {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     CircleIconButton(systemName: "chevron.left") { dismiss() }
+                    Button("DEBUG") { debugItem() }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.ink2)
                     Spacer()
                     CaptionText(text: item.foodCategory.displayName.uppercased(), color: Theme.ink2)
                     Spacer()
@@ -224,6 +228,41 @@ struct InventoryItemDetail: View {
     /// Records net consumption once when leaving the screen. Usage logs are in
     /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
     /// the consumed proportion of the amount present when the card opened.
+    private func debugItem() {
+        print("""
+        [DEBUG] InventoryItem
+          id:                \(item.id)
+          name:              \(item.name)
+          canonicalName:     \(item.canonicalName)
+          brandName:         \(item.brandName ?? "nil")
+          foodCategory:      \(item.foodCategory)
+          storageLocation:   \(item.storageLocation)
+          measureType:       \(item.measureType)
+          measureValue:      \(item.measureValue.map { String($0) } ?? "nil")
+          measureUnit:       \(item.measureUnit)
+          measureConfidence: \(item.measureConfidence)
+          packagingCategory: \(item.packagingCategory)
+          informationSource: \(item.informationSource)
+          decayRateOverride: \(item.decayRateOverride.map { String($0) } ?? "nil")
+          addedAt:           \(item.addedAt)
+          updatedAt:         \(item.updatedAt)
+        """)
+
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = item.name
+            content.body = "unit: \(item.measureUnit) | type: \(item.measureType) | value: \(item.measureValue.map { String($0) } ?? "nil") | source: \(item.informationSource)"
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+            )
+            center.add(request)
+        }
+    }
+
     private func deleteItem() {
         item.removedAt = .now
         item.removalReason = .consumed
