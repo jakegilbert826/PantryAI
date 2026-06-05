@@ -11,6 +11,7 @@ struct InventoryItemDetail: View {
     @State private var draftQuantityText: String = ""
     @State private var draftUnit: MeasureUnit
     @State private var isEditingQuantity = false
+    @FocusState private var isAmountFocused: Bool
 
     init(item: InventoryItem) {
         self.item = item
@@ -28,8 +29,13 @@ struct InventoryItemDetail: View {
             hero
             bodyContent
         }
+        .contentShape(Rectangle())
+        .onTapGesture { isAmountFocused = false }
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
+        .onChange(of: isAmountFocused) { _, focused in
+            if !focused { commitInlineEdit() }
+        }
         .onDisappear {
             saveLocationIfNeeded()
             logConsumptionIfNeeded()
@@ -271,6 +277,7 @@ struct InventoryItemDetail: View {
             if isEditingQuantity {
                 TextField("", text: $draftQuantityText)
                     .keyboardType(.decimalPad)
+                    .focused($isAmountFocused)
                     .font(.displayFallback(36, italic: true))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
@@ -306,9 +313,11 @@ struct InventoryItemDetail: View {
         }
         draftQuantityText = InventoryItem.formatNumber(displayValue)
         isEditingQuantity = true
+        isAmountFocused = true
     }
 
     private func commitInlineEdit() {
+        guard isEditingQuantity else { return }
         guard let raw = Double(draftQuantityText), raw > 0 else {
             isEditingQuantity = false
             return
