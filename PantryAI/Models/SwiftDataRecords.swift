@@ -17,7 +17,7 @@ final class InventoryItem {
     var foodCategory: FoodCategory
     var storageLocation: StorageLocation
     var storageSubLocation: String?
-
+ 
     // measure
     var measureType: MeasureType
     var measureValue: Double?

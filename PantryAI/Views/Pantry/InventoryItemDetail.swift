@@ -30,7 +30,10 @@ struct InventoryItemDetail: View {
         }
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
-        .onDisappear { logConsumptionIfNeeded() }
+        .onDisappear {
+            saveLocationIfNeeded()
+            logConsumptionIfNeeded()
+        }
     }
 
     // MARK: hero
@@ -52,7 +55,7 @@ struct InventoryItemDetail: View {
                 VStack(alignment: .leading, spacing: 6) {
                     DisplayText(text: item.canonicalName, size: 40, italic: true)
                         .multilineTextAlignment(.leading)
-                    Text("\(item.brandName ?? item.foodCategory.displayName) · \(item.storageLocation.displayName.lowercased())")
+                    Text("\(item.brandName ?? item.foodCategory.displayName) · \(location.displayName.lowercased())")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink2)
                 }
@@ -213,6 +216,13 @@ struct InventoryItemDetail: View {
     /// Records net consumption once when leaving the screen. Usage logs are in
     /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
     /// the consumed proportion of the amount present when the card opened.
+    private func saveLocationIfNeeded() {
+        guard location != item.storageLocation else { return }
+        item.storageLocation = location
+        item.updatedAt = .now
+        try? context.save()
+    }
+
     private func logConsumptionIfNeeded() {
         let start = initialQuantity
         let finalQty = item.measureValue ?? 0
