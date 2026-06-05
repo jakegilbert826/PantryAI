@@ -10,6 +10,7 @@ struct InventoryItemDetail: View {
     @State private var location: StorageLocation
     @State private var draftQuantityText: String = ""
     @State private var draftUnit: MeasureUnit
+    @State private var isEditingQuantity = false
 
     init(item: InventoryItem) {
         self.item = item
@@ -21,9 +22,6 @@ struct InventoryItemDetail: View {
         _location = State(initialValue: item.storageLocation)
         _draftUnit = State(initialValue: item.measureUnit)
     }
-
-    // Stored, user-overridable lens (seeded from food_reference at creation).
-    private var preferredUnit: PreferredUnit { item.preferredUnit }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,6 +97,14 @@ struct InventoryItemDetail: View {
 
     // MARK: add amount card (shown when quantity is unknown)
 
+    private var inputUnits: [MeasureUnit] {
+        switch item.measureType {
+        case .weight:       return [.g, .kg]
+        case .volume:       return [.ml, .l]
+        case .count, .bunch: return [.unit]
+        }
+    }
+
     private var addAmountCard: some View {
         ChunkyCard(background: Theme.surface, shadowOffset: 4) {
             VStack(alignment: .leading, spacing: 0) {
@@ -106,7 +112,7 @@ struct InventoryItemDetail: View {
                     CaptionText(text: "ADD AMOUNT")
                     Spacer()
                     Menu {
-                        ForEach(MeasureUnit.allCases, id: \.self) { unit in
+                        ForEach(inputUnits, id: \.self) { unit in
                             Button(unit.rawValue) { draftUnit = unit }
                         }
                     } label: {
@@ -143,10 +149,15 @@ struct InventoryItemDetail: View {
     }
 
     private func saveQuantity() {
-        guard let value = Double(draftQuantityText), value > 0 else { return }
+        guard let raw = Double(draftQuantityText), raw > 0 else { return }
+        let (value, unit): (Double, MeasureUnit) = switch draftUnit {
+            case .kg: (raw * 1000, .g)
+            case .l:  (raw * 1000, .ml)
+            default:  (raw, draftUnit)
+        }
         item.measureValue = value
-        item.measureUnit = draftUnit
-        item.measureType = MeasureType.from(draftUnit)
+        item.measureUnit = unit
+        item.measureType = MeasureType.from(unit)
         item.updatedAt = .now
         quantity = value
         initialQuantity = value
@@ -155,43 +166,18 @@ struct InventoryItemDetail: View {
 
     // MARK: amount card
 
-    private var unitCaption: String {
-        switch preferredUnit {
-        case .container:
-            let ct = item.containerType?.rawValue.uppercased() ?? "UNIT"
-            if let size = item.containerNominalSize, let unit = item.containerNominalUnit {
-                return "\(ct) (\(Int(size))\(unit.rawValue))"
-            }
-            return ct
-        case .measure:
-            return item.measureUnit.rawValue.uppercased()
-        }
-    }
-
     private var amountCard: some View {
         ChunkyCard(background: Theme.surface, shadowOffset: 4) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     CaptionText(text: "AMOUNT")
                     Spacer()
-                    if item.supportsContainerLens {
-                        lensToggle
-                    } else {
-                        CaptionText(text: unitCaption)
-                    }
+                    CaptionText(text: item.displayUnitLabel)
                 }
                 .padding(.bottom, 12)
 
                 amountStepper
-                    .padding(.bottom, item.amountDisplay.secondary == nil ? 14 : 4)
-
-                if let sub = item.amountDisplay.secondary {
-                    Text(sub)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.ink2)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 14)
-                }
+                    .padding(.bottom, 14)
 
                 Divider()
                     .padding(.bottom, 12)
@@ -200,33 +186,6 @@ struct InventoryItemDetail: View {
             }
             .padding(16)
         }
-    }
-
-    private var stepAmount: Double { item.amountStepSize }
-
-    // MARK: lens toggle (By amount / By container)
-
-    private var lensToggle: some View {
-        HStack(spacing: 2) {
-            lensButton("Amount", .measure)
-            lensButton("Container", .container)
-        }
-        .padding(2)
-        .background(Capsule(style: .continuous).fill(Theme.bg))
-        .overlay(Capsule(style: .continuous).stroke(Theme.ink, lineWidth: 1))
-    }
-
-    private func lensButton(_ label: String, _ unit: PreferredUnit) -> some View {
-        let selected = item.preferredUnit == unit
-        return Button { setLens(unit) } label: {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(selected ? Theme.bg : Theme.ink2)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(Capsule(style: .continuous).fill(selected ? Theme.ink : Color.clear))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: persistence
@@ -245,17 +204,11 @@ struct InventoryItemDetail: View {
     /// multiple of the step rather than offsetting an "untidy" current value
     /// (e.g. 173 → 180 / 170, not 183 / 163).
     private func stepQuantity(up: Bool) {
-        let step = stepAmount
+        let step = item.amountStepSize
         guard step > 0 else { return }
         let ratio = quantity / step
-        let index = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
+        let index: Double = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
         setQuantity(index * step)
-    }
-
-    private func setLens(_ unit: PreferredUnit) {
-        item.preferredUnit = unit
-        item.updatedAt = .now
-        try? context.save()
     }
 
     /// Records net consumption once when leaving the screen. Usage logs are in
@@ -273,8 +226,6 @@ struct InventoryItemDetail: View {
             measureValue: fraction,
             measureUnit: item.measureUnit,
             measureConfidence: item.measureConfidence,
-            containerType: item.containerType,
-            containerCount: item.derivedContainerCount,
             source: .manual
         )
         context.insert(log)
@@ -286,6 +237,7 @@ struct InventoryItemDetail: View {
     private var amountStepper: some View {
         HStack(spacing: 14) {
             Button {
+                isEditingQuantity = false
                 stepQuantity(up: false)
             } label: {
                 Image(systemName: "minus")
@@ -296,10 +248,22 @@ struct InventoryItemDetail: View {
             }
             .buttonStyle(.plain)
 
-            DisplayText(text: quantityLabel, size: 36, italic: true)
-                .frame(maxWidth: .infinity)
+            if isEditingQuantity {
+                TextField("", text: $draftQuantityText)
+                    .keyboardType(.decimalPad)
+                    .font(.displayFallback(36, italic: true))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .onSubmit { commitInlineEdit() }
+            } else {
+                DisplayText(text: quantityLabel, size: 36, italic: true)
+                    .frame(maxWidth: .infinity)
+                    .onTapGesture { beginInlineEdit() }
+            }
 
             Button {
+                isEditingQuantity = false
                 stepQuantity(up: true)
             } label: {
                 Image(systemName: "plus")
@@ -311,6 +275,31 @@ struct InventoryItemDetail: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func beginInlineEdit() {
+        let v = quantity
+        let displayValue: Double = switch item.measureUnit {
+            case .g  where v >= 1000: v / 1000
+            case .ml where v >= 1000: v / 1000
+            default: v
+        }
+        draftQuantityText = InventoryItem.formatNumber(displayValue)
+        isEditingQuantity = true
+    }
+
+    private func commitInlineEdit() {
+        guard let raw = Double(draftQuantityText), raw > 0 else {
+            isEditingQuantity = false
+            return
+        }
+        let value: Double = switch item.measureUnit {
+            case .g  where quantity >= 1000: raw * 1000
+            case .ml where quantity >= 1000: raw * 1000
+            default: raw
+        }
+        setQuantity(value)
+        isEditingQuantity = false
     }
 
     private var presetChips: some View {
@@ -505,8 +494,7 @@ struct InventoryItemDetail: View {
 
     // MARK: derived
 
-    // Single shared formatter so the card and detail can never disagree.
-    private var quantityLabel: String { item.amountDisplay.primary }
+    private var quantityLabel: String { item.amountDisplay }
 
     private var daysLeftEstimate: Int {
         let model = item.decayModel

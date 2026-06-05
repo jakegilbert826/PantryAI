@@ -61,7 +61,7 @@ struct InventoryItemCard: View {
 
     private var quantityDisplay: String? {
         guard item.hasAmount else { return nil }
-        return item.amountDisplay.primary
+        return item.amountDisplay
     }
 
     private var subtitle: String {

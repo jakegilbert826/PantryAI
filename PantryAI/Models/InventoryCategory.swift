@@ -66,51 +66,29 @@ enum PackagingCategory: String, Codable, Hashable {
     case canned, dried, frozen, fresh, beverage, condiment
 }
 
-// MARK: - Preferred display mode
-
-enum PreferredUnit: String, Codable {
-    case container
-    case measure
-}
-
 // MARK: - Measure
 
 enum MeasureType: String, Codable, Hashable {
-    case weight, volume, count, bunch
+    case weight, volume, count
+    case bunch // legacy — migrated to .count on first launch; never written
 
     static func from(_ unit: MeasureUnit) -> MeasureType {
         switch unit {
-        case .g, .kg: return .weight
-        case .ml, .l: return .volume
-        case .unit:   return .count
-        case .bunch:  return .bunch
+        case .g, .kg:       return .weight
+        case .ml, .l:       return .volume
+        case .unit, .bunch: return .count
         }
     }
 }
 
 enum MeasureUnit: String, CaseIterable, Codable, Hashable {
-    case g, kg, ml, l, unit, bunch
+    case g, kg, ml, l, unit
+    case bunch // legacy — migrated to .unit on first launch; never written
 
     static func from(_ string: String?) -> MeasureUnit {
         guard let s = string else { return .unit }
         return MeasureUnit(rawValue: s.lowercased()) ?? .unit
     }
-}
-
-// MARK: - Container
-
-enum ContainerType: String, Codable, Hashable {
-    case can, bottle, bag, box, punnet, jar
-}
-
-enum NominalUnit: String, Codable, Hashable {
-    case g, ml, kg, l
-}
-
-enum StepperType: String, Codable, Hashable {
-    case container
-    case count
-    case weightVolume = "weight_volume"
 }
 
 // MARK: - Provenance

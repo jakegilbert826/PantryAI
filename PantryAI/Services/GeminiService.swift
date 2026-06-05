@@ -251,11 +251,6 @@ final class GeminiService: GeminiServiceProtocol {
             let measureType: String?
             let measureValue: Double?
             let measureUnit: String?
-            let measureDisplayFraction: Bool?
-            let containerType: String?
-            let containerCount: Double?
-            let containerNominalSize: Double?
-            let containerNominalUnit: String?
             let openedAtEstimated: Bool?
             let confidence: Double
 
@@ -270,11 +265,6 @@ final class GeminiService: GeminiServiceProtocol {
                 case measureType = "measure_type"
                 case measureValue = "measure_value"
                 case measureUnit = "measure_unit"
-                case measureDisplayFraction = "measure_display_fraction"
-                case containerType = "container_type"
-                case containerCount = "container_count"
-                case containerNominalSize = "container_nominal_size"
-                case containerNominalUnit = "container_nominal_unit"
                 case openedAtEstimated = "opened_at_estimated"
                 case confidence
             }
@@ -376,28 +366,23 @@ extension GeminiService {
     Each object must have:
     {
       "name": string,
-      "canonical_name": string,          // normalised lowercase, no brand e.g. "free range egg"
+      "canonical_name": string,       // normalised lowercase, no brand e.g. "free range egg"
       "brand_name": string | null,
-      "barcode": string | null,          // if visible on packaging
-      "packaging_category": string,      // one of: fresh, canned, dried, frozen, beverage, condiment
-      "food_category": string,           // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
-      "storage_location": string,        // one of: fridge, freezer, pantry
-      "measure_type": string,            // one of: weight, volume, count, bunch
-      "measure_value": number | null,    // null if cannot be determined from image
-      "measure_unit": string | null,     // one of: g, kg, ml, l, unit, bunch — null if measure_value is null
-      "measure_display_fraction": bool,  // true for count/bunch items, false for weight/volume
-      "container_type": string | null,   // one of: can, bottle, bag, box, punnet, jar — null if no container
-      "container_count": number | null,  // number of containers visible, null if no container
-      "container_nominal_size": number | null,  // e.g. 400 for a 400g can, null if not visible
-      "container_nominal_unit": string | null,  // one of: g, ml — null if not applicable
-      "opened_at_estimated": bool,       // true if packaging appears opened or partially used
-      "confidence": number               // your detection confidence 0.0–1.0
+      "barcode": string | null,       // if visible on packaging
+      "packaging_category": string,   // one of: fresh, canned, dried, frozen, beverage, condiment
+      "food_category": string,        // one of: fresh_produce, dairy, meat, fish, frozen_goods, dry_goods, condiments, beverages, snacks
+      "storage_location": string,     // one of: fridge, freezer, pantry
+      "measure_type": string,         // one of: weight, volume, count
+      "measure_value": number | null, // null if cannot be determined — always in base units (grams for weight, ml for volume)
+      "measure_unit": string | null,  // one of: g, ml, unit — always use base units, never kg or l
+      "opened_at_estimated": bool,    // true if packaging appears opened or partially used
+      "confidence": number            // your detection confidence 0.0–1.0
     }
 
     Rules:
+    - Always express weight in grams (g) and volume in millilitres (ml) — never use kg or l
     - If measure_value cannot be determined from the image, return null — do not guess
-    - If a container is present but nominal_size is not visible, return container_type and container_count but null for container_nominal_size
-    - If an item appears partially used, reflect that in measure_value (e.g. half a bunch = 0.5)
+    - If an item appears partially used, reflect that in measure_value (e.g. half a 400g can = 200)
     - Omit items you cannot identify with reasonable confidence
     - Never return measure_value: 1.0 as a proxy for "full" — return the actual value or null
     """
