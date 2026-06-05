@@ -160,6 +160,7 @@ struct InventoryItemDetail: View {
         item.measureValue = value
         item.measureUnit = unit
         item.measureType = MeasureType.from(unit)
+        item.informationSource = .manual
         item.updatedAt = .now
         quantity = value
         initialQuantity = value
@@ -198,6 +199,7 @@ struct InventoryItemDetail: View {
         let clamped = max(0, newValue)
         quantity = clamped
         item.measureValue = clamped
+        item.informationSource = .manual
         item.updatedAt = .now
         try? context.save()
     }
@@ -219,6 +221,7 @@ struct InventoryItemDetail: View {
     private func saveLocationIfNeeded() {
         guard location != item.storageLocation else { return }
         item.storageLocation = location
+        item.informationSource = .manual
         item.updatedAt = .now
         try? context.save()
     }
@@ -523,7 +526,7 @@ struct InventoryItemDetail: View {
 
     private var derivedSources: [DerivedSource] {
         var sources: [DerivedSource] = []
-        if item.quantityLog.contains(where: { $0.source == .manual }) {
+        if item.informationSource == .manual || item.quantityLog.contains(where: { $0.source == .manual }) {
             sources.append(.init(icon: "hand.tap", label: "You, in app", when: ""))
         }
         if item.quantityLog.contains(where: { $0.source == .usageLog }) {
