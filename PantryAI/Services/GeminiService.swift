@@ -442,7 +442,7 @@ extension GeminiService {
         ---JSON---
         {"remove": [], "add": []}
 
-        Populate "remove" with the exact names of any pantry items the user says they don't have or want removed. Populate "add" with the exact names of any items the user says they've just bought or want added. Always include the block even when both arrays are empty. Do not include any text after the JSON block.
+        Populate "remove" with the exact names of any pantry items the user says they don't have or want removed. Populate "add" with the canonical names of any items the user says they've got that aren't already in their inventory. Always include the block even when both arrays are empty. Do not include any text after the JSON block.
         """
     }
 

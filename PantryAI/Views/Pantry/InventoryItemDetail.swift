@@ -47,7 +47,7 @@ struct InventoryItemDetail: View {
                     Spacer()
                     CaptionText(text: item.foodCategory.displayName.uppercased(), color: Theme.ink2)
                     Spacer()
-                    CircleIconButton(systemName: "ellipsis") {}
+                    CircleIconButton(systemName: "xmark", background: Theme.red, foreground: Theme.bg) { deleteItem() }
                 }
                 .padding(.top, 56)
                 .padding(.horizontal, 22)
@@ -218,6 +218,14 @@ struct InventoryItemDetail: View {
     /// Records net consumption once when leaving the screen. Usage logs are in
     /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
     /// the consumed proportion of the amount present when the card opened.
+    private func deleteItem() {
+        item.removedAt = .now
+        item.removalReason = .consumed
+        item.updatedAt = .now
+        try? context.save()
+        dismiss()
+    }
+
     private func saveLocationIfNeeded() {
         guard location != item.storageLocation else { return }
         item.storageLocation = location
