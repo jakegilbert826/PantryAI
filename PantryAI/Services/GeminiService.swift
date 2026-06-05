@@ -431,7 +431,7 @@ extension GeminiService {
     static func chatSystemInstruction(inventory: [InventoryItem]) -> String {
         let inv = inventory.isEmpty
             ? "The pantry is currently empty."
-            : "The user's pantry contains: " + inventory.map { "\($0.name) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ") + "."
+        : "The user's pantry contains: " + inventory.map { "\($0.canonicalName.lowercased()) (\(Int($0.currentConfidence * 100))% left)" }.joined(separator: ", ") + "."
         return """
         You are Pip, a friendly kitchen assistant. \(inv)
         Help the user with recipe requests and cooking questions across the conversation, using pantry items where possible. If key items are missing, note what to buy.
@@ -442,7 +442,7 @@ extension GeminiService {
         ---JSON---
         {"remove": [], "add": []}
 
-        Populate "remove" with the exact names of any pantry items the user says they don't have or want removed. Populate "add" with the canonical names of any items the user says they've got that aren't already in their inventory. Always include the block even when both arrays are empty. Do not include any text after the JSON block.
+        Populate "remove" with the exact names of any pantry items the user says they don't have or want removed. Populate "add" with the canonical names (lowercase) of any items the user says they've got that aren't already in their inventory. Always include the block even when both arrays are empty. Do not include any text after the JSON block.
         """
     }
 

@@ -37,6 +37,9 @@ struct InventoryItemDetail: View {
         .onChange(of: isAmountFocused) { _, focused in
             if !focused { commitInlineEdit() }
         }
+        .onChange(of: item.measureUnit) { _, newUnit in
+            draftUnit = newUnit
+        }
         .onDisappear {
             saveLocationIfNeeded()
             logConsumptionIfNeeded()
