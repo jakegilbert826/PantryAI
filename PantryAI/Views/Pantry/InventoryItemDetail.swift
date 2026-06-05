@@ -457,7 +457,11 @@ struct InventoryItemDetail: View {
             CaptionText(text: "WHERE THIS CAME FROM")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
+                    if item.informationSource == .inChat {
+                        sourceChip(icon: "bubble.left", label: "You, in chat", when: relativeScanDate)
+                    } else {
+                        sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
+                    }
                     ForEach(derivedSources, id: \.label) { src in
                         sourceChip(icon: src.icon, label: src.label, when: src.when)
                     }
