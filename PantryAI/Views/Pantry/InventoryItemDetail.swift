@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct InventoryItemDetail: View {
     let item: InventoryItem
@@ -11,6 +12,7 @@ struct InventoryItemDetail: View {
     @State private var draftQuantityText: String = ""
     @State private var draftUnit: MeasureUnit
     @State private var isEditingQuantity = false
+    @FocusState private var isAmountFocused: Bool
 
     init(item: InventoryItem) {
         self.item = item
@@ -28,8 +30,16 @@ struct InventoryItemDetail: View {
             hero
             bodyContent
         }
+        .contentShape(Rectangle())
+        .onTapGesture { isAmountFocused = false }
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
+        .onChange(of: isAmountFocused) { _, focused in
+            if !focused { commitInlineEdit() }
+        }
+        .onChange(of: item.measureUnit) { _, newUnit in
+            draftUnit = newUnit
+        }
         .onDisappear {
             saveLocationIfNeeded()
             logConsumptionIfNeeded()
@@ -44,10 +54,13 @@ struct InventoryItemDetail: View {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     CircleIconButton(systemName: "chevron.left") { dismiss() }
+                    Button("DEBUG") { debugItem() }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.ink2)
                     Spacer()
                     CaptionText(text: item.foodCategory.displayName.uppercased(), color: Theme.ink2)
                     Spacer()
-                    CircleIconButton(systemName: "ellipsis") {}
+                    CircleIconButton(systemName: "xmark", background: Theme.red, foreground: Theme.bg) { deleteItem() }
                 }
                 .padding(.top, 56)
                 .padding(.horizontal, 22)
@@ -218,6 +231,49 @@ struct InventoryItemDetail: View {
     /// Records net consumption once when leaving the screen. Usage logs are in
     /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
     /// the consumed proportion of the amount present when the card opened.
+    private func debugItem() {
+        print("""
+        [DEBUG] InventoryItem
+          id:                \(item.id)
+          name:              \(item.name)
+          canonicalName:     \(item.canonicalName)
+          brandName:         \(item.brandName ?? "nil")
+          foodCategory:      \(item.foodCategory)
+          storageLocation:   \(item.storageLocation)
+          measureType:       \(item.measureType)
+          measureValue:      \(item.measureValue.map { String($0) } ?? "nil")
+          measureUnit:       \(item.measureUnit)
+          measureConfidence: \(item.measureConfidence)
+          packagingCategory: \(item.packagingCategory)
+          informationSource: \(item.informationSource)
+          decayRateOverride: \(item.decayRateOverride.map { String($0) } ?? "nil")
+          addedAt:           \(item.addedAt)
+          updatedAt:         \(item.updatedAt)
+        """)
+
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = item.name
+            content.body = "unit: \(item.measureUnit) | type: \(item.measureType) | value: \(item.measureValue.map { String($0) } ?? "nil") | source: \(item.informationSource)"
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+            )
+            center.add(request)
+        }
+    }
+
+    private func deleteItem() {
+        item.removedAt = .now
+        item.removalReason = .consumed
+        item.updatedAt = .now
+        try? context.save()
+        dismiss()
+    }
+
     private func saveLocationIfNeeded() {
         guard location != item.storageLocation else { return }
         item.storageLocation = location
@@ -263,6 +319,7 @@ struct InventoryItemDetail: View {
             if isEditingQuantity {
                 TextField("", text: $draftQuantityText)
                     .keyboardType(.decimalPad)
+                    .focused($isAmountFocused)
                     .font(.displayFallback(36, italic: true))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
@@ -298,9 +355,11 @@ struct InventoryItemDetail: View {
         }
         draftQuantityText = InventoryItem.formatNumber(displayValue)
         isEditingQuantity = true
+        isAmountFocused = true
     }
 
     private func commitInlineEdit() {
+        guard isEditingQuantity else { return }
         guard let raw = Double(draftQuantityText), raw > 0 else {
             isEditingQuantity = false
             return
@@ -457,9 +516,14 @@ struct InventoryItemDetail: View {
             CaptionText(text: "WHERE THIS CAME FROM")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    if item.informationSource == .inChat {
+                    switch item.informationSource {
+                    case .inChat:
                         sourceChip(icon: "bubble.left", label: "You, in chat", when: relativeScanDate)
-                    } else {
+                    case .receipt:
+                        sourceChip(icon: "doc.text", label: "Receipt scan", when: relativeScanDate)
+                    case .receiptSync:
+                        sourceChip(icon: "envelope", label: "Email sync", when: relativeScanDate)
+                    default:
                         sourceChip(icon: "camera", label: "Pantry scan", when: relativeScanDate)
                     }
                     ForEach(derivedSources, id: \.label) { src in

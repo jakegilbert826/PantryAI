@@ -26,6 +26,7 @@ extension InventoryItem {
         switch measureUnit {
         case .g  where v >= 1000: return "KG"
         case .ml where v >= 1000: return "L"
+        case .unit where v > 1: return "UNITS"
         default: return measureUnit.rawValue.uppercased()
         }
     }

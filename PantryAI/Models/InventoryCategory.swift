@@ -83,7 +83,7 @@ enum MeasureType: String, Codable, Hashable {
 
 enum MeasureUnit: String, CaseIterable, Codable, Hashable {
     case g, kg, ml, l, unit
-    case bunch // legacy — migrated to .unit on first launch; never written
+    case bunch // legacy — migrated to .unit on first launch; never written TODO can I delete?
 
     static func from(_ string: String?) -> MeasureUnit {
         guard let s = string else { return .unit }
@@ -94,7 +94,7 @@ enum MeasureUnit: String, CaseIterable, Codable, Hashable {
 // MARK: - Provenance
 
 enum InformationSource: String, Codable, Hashable {
-    case pantryScan, receipt, barcode, manual, inChat
+    case pantryScan, receipt, receiptSync, barcode, manual, inChat
 }
 
 enum RemovalReason: String, Codable, Hashable {

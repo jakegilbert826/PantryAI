@@ -16,13 +16,16 @@ actor FoodReferenceService {
         do {
             let rows = try await fetchAll()
             cache = Dictionary(uniqueKeysWithValues: rows.map { ($0.canonicalName, $0) })
+            print("[FoodReferenceService] loaded \(cache.count) rows. Sample keys: \(Array(cache.keys.prefix(10)))")
         } catch {
             print("[FoodReferenceService] prefetch failed: \(error)")
         }
     }
 
     func lookup(canonicalName: String) -> FoodReference? {
-        cache[canonicalName]
+        let result = cache[canonicalName]
+        print("[FoodReferenceService] lookup '\(canonicalName)' → \(result == nil ? "nil" : "found (\(result!.defaultMeasureUnit)")")
+        return result
     }
 
     // MARK: - Private

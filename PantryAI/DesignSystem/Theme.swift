@@ -19,6 +19,7 @@ enum Theme {
     static let rose   = Color(hex: 0xE5BCBC)
     static let amber  = Color(hex: 0xF2C254)
     static let lilac  = Color(hex: 0xC9BDDC)
+    static let red    = Color(hex: 0xD98F8F)
 
     // MARK: Semantic
     static let fresh  = Color(hex: 0x3D6B4F)

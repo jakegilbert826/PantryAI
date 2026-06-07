@@ -42,7 +42,7 @@ struct PantryView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { vm?.load() }
         }
-        .sheet(item: $selected) { item in
+        .sheet(item: $selected, onDismiss: { vm?.load() }) { item in
             InventoryItemDetail(item: item)
         }
     }
