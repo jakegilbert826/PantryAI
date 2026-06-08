@@ -122,7 +122,6 @@ final class RecipesViewModel {
             let item = InventoryItem(
                 name: name,
                 foodCategory: .dryGoods,
-                measureConfidence: 1.0,
                 informationSource: .inChat
             )
             try? inventory.upsert([item])

@@ -91,15 +91,18 @@ final class ScanViewModel {
     private func commit(_ included: [ScannedItem]) async {
         var items: [InventoryItem] = []
         for scanned in included {
+            // A scanned amount of 0 means "amount not determined", not empty.
+            let quantity: Double? = scanned.measureValue > 0 ? scanned.measureValue : nil
+            let cv = SourceReliability.cv(for: .scan, kind: .stock,
+                                          assumedSize: false, measurementConfidence: scanned.confidence)
             let item = InventoryItem(
                 name: scanned.name,
                 canonicalName: scanned.canonicalName,
                 brandName: scanned.brandName,
                 foodCategory: scanned.foodCategory,
-                measureType: MeasureType.from(scanned.measureUnit),
-                measureValue: scanned.measureValue,
                 measureUnit: scanned.measureUnit,
-                measureConfidence: scanned.confidence,
+                quantity: quantity,
+                quantityVariance: quantity.map { SourceReliability.measurementVariance(quantity: $0, cv: cv) },
                 informationSource: .pantryScan,
                 lastScannedAt: .now
             )
@@ -119,7 +122,9 @@ final class ScanViewModel {
         guard let ref = await FoodReferenceService.shared.lookup(canonicalName: item.canonicalName) else { return }
         item.packagingCategory = ref.defaultPackagingCategory
         item.storageLocation = ref.defaultStorageLocation
-        if item.decayRateOverride == nil { item.decayRateOverride = ref.decayRateDays }
+        // Reference half-lives override the category cold-start priors.
+        item.halfLifeDays = ref.halfLifeDays
+        if let opened = ref.openedHalfLifeDays { item.openHalfLifeDays = opened }
     }
 
     func reset() {

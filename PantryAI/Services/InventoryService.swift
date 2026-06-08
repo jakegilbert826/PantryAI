@@ -44,10 +44,14 @@ final class InventoryService {
                 match.foodCategory = item.foodCategory
                 match.packagingCategory = item.packagingCategory
                 match.storageLocation = item.storageLocation
-                match.measureType = item.measureType
-                match.measureValue = item.measureValue
                 match.measureUnit = item.measureUnit
-                match.measureConfidence = item.measureConfidence
+                // Re-anchor the probabilistic state from the incoming observation.
+                match.halfLifeDays = item.halfLifeDays
+                match.openHalfLifeDays = item.openHalfLifeDays
+                match.lastObservedQuantity = item.lastObservedQuantity
+                match.observationVariance = item.observationVariance
+                match.presenceAnchor = item.presenceAnchor
+                match.lastObservedAt = item.lastObservedAt
                 match.informationSource = item.informationSource
                 match.lastScannedAt = item.lastScannedAt ?? .now
                 match.updatedAt = .now
@@ -81,14 +85,15 @@ final class InventoryService {
         if changed { try context.save() }
     }
 
-    func logUsage(itemID: UUID, quantityUsed: Double, source: LogSource = .manual) throws {
+    func logUsage(itemID: UUID, quantityUsed: Double, source: LogSource = .usageLog) throws {
         let descriptor = FetchDescriptor<InventoryItem>(predicate: #Predicate { $0.id == itemID })
         guard let item = try context.fetch(descriptor).first else { return }
         let log = ItemQuantityLog(
-            measureType: item.measureType,
+            item: item,
+            observationKind: .stock,
             measureValue: quantityUsed,
             measureUnit: item.measureUnit,
-            measureConfidence: item.measureConfidence,
+            measurementConfidence: 1.0,
             source: source
         )
         context.insert(log)
@@ -127,22 +132,20 @@ struct BackendInventoryItem: Codable {
     var name: String
     var foodCategory: String
     var brandName: String?
-    var measureValue: Double?
+    var measureValue: Double?      // current best-estimate amount (computed anchor)
     var measureUnit: String
-    var measureConfidence: Double
+    var halfLifeDays: Double?
     var lastScannedAt: Date?
-    var decayRateOverride: Double?
 
     init(from item: InventoryItem) {
         self.id = item.id
         self.name = item.name
         self.foodCategory = item.foodCategory.rawValue
         self.brandName = item.brandName
-        self.measureValue = item.measureValue
+        self.measureValue = item.lastObservedQuantity
         self.measureUnit = item.measureUnit.rawValue
-        self.measureConfidence = item.measureConfidence
+        self.halfLifeDays = item.halfLifeDays
         self.lastScannedAt = item.lastScannedAt
-        self.decayRateOverride = item.decayRateOverride
     }
 
     func toModel() -> InventoryItem {
@@ -151,10 +154,9 @@ struct BackendInventoryItem: Codable {
             name: name,
             brandName: brandName,
             foodCategory: FoodCategory(rawValue: foodCategory) ?? .dryGoods,
-            measureValue: measureValue,
             measureUnit: MeasureUnit(rawValue: measureUnit) ?? .unit,
-            measureConfidence: measureConfidence,
-            decayRateOverride: decayRateOverride,
+            quantity: measureValue,
+            halfLifeDays: .some(halfLifeDays),
             informationSource: .manual,
             lastScannedAt: lastScannedAt
         )

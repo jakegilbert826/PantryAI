@@ -14,22 +14,82 @@ struct ScannedItem: Identifiable, Hashable {
     var include: Bool = true
 }
 
-// MARK: - Computed properties on InventoryItem @Model
+// MARK: - v3 read-time decay model
+//
+// Two decay processes, kept separate and combined only at read time (design §3):
+//   • spoilage (physical, from half-lives) → `presenceConfidence`
+//   • consumption (behavioural, learned rate) → `quantityMean*`
+// Everything here is computed from the stored anchors and `now`; nothing
+// time-varying is persisted, so nothing goes stale.
 
 extension InventoryItem {
 
-    var decayModel: any DecayModel {
-        DecayModelFactory.model(for: foodCategory, halfLifeOverride: decayRateOverride)
+    /// Days elapsed since the last hard observation.
+    private func elapsedDays(to now: Date) -> Double {
+        max(0, now.timeIntervalSince(lastObservedAt) / 86_400)
     }
 
-    var currentConfidence: Double {
-        decayModel.confidence(
-            lastScanConfidence: measureConfidence,
-            lastScanDate: lastScannedAt ?? addedAt,
-            householdSize: UserPreferences.shared.householdSize,
-            usageHistory: quantityLog
-        )
+    /// Effective half-life in days, picking sealed vs opened and applying the
+    /// personal multiplier. `nil` = infinite (no spoilage).
+    func effectiveHalfLife(multiplier: Double = 1.0) -> Double? {
+        let base = isOpened ? openHalfLifeDays : halfLifeDays
+        guard let base else { return nil }
+        return base * multiplier
     }
+
+    /// Spoilage-driven presence in [0, 1]. Infinite half-life → never decays.
+    func presenceConfidence(at now: Date = .now, multiplier: Double = 1.0) -> Double {
+        guard let halfLife = effectiveHalfLife(multiplier: multiplier), halfLife > 0 else {
+            return presenceAnchor
+        }
+        return presenceAnchor * pow(0.5, elapsedDays(to: now) / halfLife)
+    }
+
+    /// Consumption-driven mean quantity, **unclamped** (may go negative so the
+    /// availability CDF keeps falling past expected exhaustion). `nil` when the
+    /// amount was never observed.
+    func quantityMeanRaw(rate: Double = 0, at now: Date = .now) -> Double? {
+        guard let q0 = lastObservedQuantity else { return nil }
+        return q0 - rate * elapsedDays(to: now)
+    }
+
+    /// Clamped mean for display. `nil` when the amount is unknown.
+    func quantityMeanDisplay(rate: Double = 0, at now: Date = .now) -> Double? {
+        quantityMeanRaw(rate: rate, at: now).map { max(0, $0) }
+    }
+
+    /// Convenience for the common "no learned rate yet" read path.
+    var quantityMeanDisplay: Double? { quantityMeanDisplay() }
+
+    /// Quantity variance, growing with rate uncertainty over time.
+    func quantityVariance(rateVar: Double = 0, at now: Date = .now) -> Double {
+        let dt = elapsedDays(to: now)
+        return observationVariance + rateVar * dt * dt
+    }
+
+    /// P(at least `threshold` remains). When the amount is unknown we don't
+    /// penalise quantity — presence alone carries the signal.
+    func availabilityQuantity(threshold: Double = 0, rate: Double = 0, rateVar: Double = 0, at now: Date = .now) -> Double {
+        guard let mean = quantityMeanRaw(rate: rate, at: now) else { return 1.0 }
+        let sd = quantityVariance(rateVar: rateVar, at: now).squareRoot()
+        return GaussianMath.availability(value: mean, threshold: threshold, sd: sd)
+    }
+
+    /// Combined read-time availability = presence × P(quantity ≥ threshold).
+    func availabilityConfidence(
+        threshold: Double = 0,
+        rate: Double = 0,
+        rateVar: Double = 0,
+        multiplier: Double = 1.0,
+        at now: Date = .now
+    ) -> Double {
+        presenceConfidence(at: now, multiplier: multiplier)
+            * availabilityQuantity(threshold: threshold, rate: rate, rateVar: rateVar, at: now)
+    }
+
+    /// Single 0–1 number the UI shows (ring, freshness bar). Uses the default
+    /// "no learned consumption rate" read path until learning lands (phase 6).
+    var currentConfidence: Double { availabilityConfidence() }
 
     var isLow: Bool { currentConfidence < 0.25 }
     var isExpiring: Bool { currentConfidence < 0.40 }
