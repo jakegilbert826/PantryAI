@@ -19,8 +19,8 @@ final class PantryViewModelTests: XCTestCase {
 
     func testLoadPullsExistingItems() throws {
         try seed([
-            InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0),
-            InventoryItem(name: "Milk", foodCategory: .dairy, measureConfidence: 1.0),
+            InventoryItem(name: "Rice", foodCategory: .dryGoods),
+            InventoryItem(name: "Milk", foodCategory: .dairy),
         ])
         let vm = PantryViewModel(context: context)
         XCTAssertEqual(vm.items.count, 2)
@@ -29,9 +29,9 @@ final class PantryViewModelTests: XCTestCase {
     func testHasLowItemsReflectsDepletedStock() throws {
         try seed([
             InventoryItem(name: "Old Milk", foodCategory: .dairy,
-                          measureConfidence: 1.0, lastScannedAt: .daysAgo(10_000)),
+                          lastScannedAt: .daysAgo(10_000)),
             InventoryItem(name: "Fresh Rice", foodCategory: .dryGoods,
-                          measureConfidence: 1.0, lastScannedAt: .now),
+                          lastScannedAt: .now),
         ])
         let vm = PantryViewModel(context: context)
         XCTAssertTrue(vm.hasLowItems)
@@ -39,29 +39,32 @@ final class PantryViewModelTests: XCTestCase {
     }
 
     func testByLocationAlwaysReturnsThreeOrderedBuckets() throws {
-        try seed([InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0)])
+        try seed([InventoryItem(name: "Rice", foodCategory: .dryGoods)])
         let vm = PantryViewModel(context: context)
         let locations = vm.byLocation.map(\.0)
         XCTAssertEqual(locations, [.fridge, .freezer, .pantry])
     }
 
     func testDeleteRemovesItemAndReloads() throws {
-        let item = InventoryItem(name: "Eggs", foodCategory: .dairy, measureConfidence: 1.0)
+        let item = InventoryItem(name: "Eggs", foodCategory: .dairy)
         try seed([item])
         let vm = PantryViewModel(context: context)
         vm.delete(item)
         XCTAssertTrue(vm.items.isEmpty)
     }
 
-    func testLogUsageReducesStoredConfidence() throws {
+    func testLogUsageAppendsUsageLog() throws {
+        // v3: reads are anchor-driven, so a usage log records history without
+        // mutating the decay anchors. Confidence stays full until a re-anchoring
+        // observation lands.
         let item = InventoryItem(name: "Juice", foodCategory: .beverages,
-                                 measureConfidence: 1.0, lastScannedAt: .now)
+                                 lastScannedAt: .now)
         try seed([item])
         let vm = PantryViewModel(context: context)
         vm.logUsage(item, fraction: 0.5)
 
         let reloaded = vm.items.first { $0.id == item.id }
         XCTAssertEqual(reloaded?.quantityLog.count, 1)
-        XCTAssertLessThan(reloaded?.currentConfidence ?? 1, 1.0)
+        XCTAssertEqual(reloaded?.quantityLog.first?.measureValue, 0.5)
     }
 }

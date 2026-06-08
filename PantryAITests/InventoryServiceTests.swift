@@ -21,7 +21,7 @@ final class InventoryServiceTests: XCTestCase {
     }
 
     private func makeItem(_ name: String, category: FoodCategory = .dryGoods) -> InventoryItem {
-        InventoryItem(name: name, foodCategory: category, measureConfidence: 1.0)
+        InventoryItem(name: name, foodCategory: category)
     }
 
     // MARK: Insert / read
@@ -36,12 +36,12 @@ final class InventoryServiceTests: XCTestCase {
     func testUpsertUpdatesExistingByCaseInsensitiveName() throws {
         try service.upsert([makeItem("Milk", category: .dairy)])
         let updated = makeItem("MILK", category: .dairy)
-        updated.measureValue = 0.25
+        updated.lastObservedQuantity = 0.25
         try service.upsert([updated])
 
         let all = try service.all()
         XCTAssertEqual(all.count, 1, "case-folded name should dedupe")
-        XCTAssertEqual(all.first?.measureValue, 0.25)
+        XCTAssertEqual(all.first?.lastObservedQuantity, 0.25)
     }
 
     func testAllSortsByUpdatedAtDescending() throws {

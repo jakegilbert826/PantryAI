@@ -7,6 +7,7 @@ struct InventoryItemDetail: View {
 
     @State private var quantity: Double
     @State private var initialQuantity: Double
+    @State private var lastCommittedQuantity: Double
     @State private var location: StorageLocation
     @State private var draftQuantityText: String = ""
     @State private var draftUnit: MeasureUnit
@@ -14,14 +15,19 @@ struct InventoryItemDetail: View {
 
     init(item: InventoryItem) {
         self.item = item
-        // `measureValue` is the single source of truth; the container view is a
-        // lens over it. `quantity` mirrors it for snappy stepping.
-        let initialQty = item.measureValue ?? 0
+        // The displayed amount is the v3 computed `quantityMeanDisplay`; `quantity`
+        // mirrors it locally for snappy stepping. Edits are committed back through
+        // the observation funnel, never written to the anchors directly.
+        let initialQty = item.displayAmount
         _quantity = State(initialValue: initialQty)
         _initialQuantity = State(initialValue: initialQty)
+        _lastCommittedQuantity = State(initialValue: initialQty)
         _location = State(initialValue: item.storageLocation)
         _draftUnit = State(initialValue: item.measureUnit)
     }
+
+    /// Single funnel for every quantity/presence mutation (v3 §5).
+    private var engine: ObservationEngine { ObservationEngine(context: context) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,8 +37,8 @@ struct InventoryItemDetail: View {
         .background(Theme.bg)
         .ignoresSafeArea(edges: .top)
         .onDisappear {
+            commitPendingQuantityIfNeeded()
             saveLocationIfNeeded()
-            logConsumptionIfNeeded()
         }
     }
 
@@ -76,7 +82,7 @@ struct InventoryItemDetail: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if (item.measureValue ?? 0) <= 0 {
+            if !item.hasAmount {
                 addAmountCard
             } else {
                 amountCard
@@ -157,14 +163,11 @@ struct InventoryItemDetail: View {
             case .l:  (raw * 1000, .ml)
             default:  (raw, draftUnit)
         }
-        item.measureValue = value
+        // Setting the first amount may change the unit (count → weight/volume).
         item.measureUnit = unit
-        item.measureType = MeasureType.from(unit)
         item.informationSource = .manual
-        item.updatedAt = .now
-        quantity = value
-        initialQuantity = value
-        try? context.save()
+        commitQuantity(value)
+        initialQuantity = value   // becomes the base for the preset chips
     }
 
     // MARK: amount card
@@ -193,55 +196,43 @@ struct InventoryItemDetail: View {
 
     // MARK: persistence
 
-    /// Write the edited amount straight through to the model (fixes the prior
-    /// "doesn't update on save()" bug). `measureValue` is the source of truth.
-    private func setQuantity(_ newValue: Double) {
+    /// Updates the local working value only — no persistence. Stepping
+    /// accumulates here and commits once (see `commitPendingQuantityIfNeeded`).
+    private func applyLocal(_ newValue: Double) {
+        quantity = max(0, newValue)
+    }
+
+    /// Commits an explicit, deliberate amount immediately as a ground-truth
+    /// `.stock` observation (preset chips, typed value, save).
+    private func commitQuantity(_ newValue: Double) {
         let clamped = max(0, newValue)
         quantity = clamped
-        item.measureValue = clamped
-        item.informationSource = .manual
-        item.updatedAt = .now
-        try? context.save()
+        engine.record(.userStock(clamped), on: item)
+        lastCommittedQuantity = clamped
+    }
+
+    /// Flushes a pending stepper sequence as a single observation, so ten taps
+    /// become one log row rather than ten (v3 §5 debounce-on-commit).
+    private func commitPendingQuantityIfNeeded() {
+        guard abs(quantity - lastCommittedQuantity) > 1e-6 else { return }
+        commitQuantity(quantity)
     }
 
     /// Steps the amount up/down by `stepAmount`, snapping to the next clean
     /// multiple of the step rather than offsetting an "untidy" current value
-    /// (e.g. 173 → 180 / 170, not 183 / 163).
+    /// (e.g. 173 → 180 / 170, not 183 / 163). Local-only until commit.
     private func stepQuantity(up: Bool) {
         let step = item.amountStepSize
         guard step > 0 else { return }
         let ratio = quantity / step
         let index: Double = up ? (floor(ratio + 1e-6) + 1) : (ceil(ratio - 1e-6) - 1)
-        setQuantity(index * step)
+        applyLocal(index * step)
     }
 
-    /// Records net consumption once when leaving the screen. Usage logs are in
-    /// 0–1 confidence-fraction units (see `DecayModel.applyingUsage`), so we log
-    /// the consumed proportion of the amount present when the card opened.
     private func saveLocationIfNeeded() {
         guard location != item.storageLocation else { return }
         item.storageLocation = location
         item.informationSource = .manual
-        item.updatedAt = .now
-        try? context.save()
-    }
-
-    private func logConsumptionIfNeeded() {
-        let start = initialQuantity
-        let finalQty = item.measureValue ?? 0
-        guard start > 0, finalQty < start else { return }
-        let fraction = min(1, (start - finalQty) / start)
-        guard fraction > 0 else { return }
-        let log = ItemQuantityLog(
-            item: item,
-            measureType: item.measureType,
-            measureValue: fraction,
-            measureUnit: item.measureUnit,
-            measureConfidence: item.measureConfidence,
-            source: .manual
-        )
-        context.insert(log)
-        item.quantityLog.append(log)
         item.updatedAt = .now
         try? context.save()
     }
@@ -310,15 +301,15 @@ struct InventoryItemDetail: View {
             case .ml where quantity >= 1000: raw * 1000
             default: raw
         }
-        setQuantity(value)
+        commitQuantity(value)
         isEditingQuantity = false
     }
 
     private var presetChips: some View {
         HStack(spacing: 8) {
-            presetChip("Half left",   danger: false) { setQuantity((initialQuantity * 0.5).rounded(toDecimalPlaces: 1)) }
-            presetChip("Almost gone", danger: false) { setQuantity((initialQuantity * 0.1).rounded(toDecimalPlaces: 1)) }
-            presetChip("Used it all", danger: true)  { setQuantity(0) }
+            presetChip("Half left",   danger: false) { commitQuantity((initialQuantity * 0.5).rounded(toDecimalPlaces: 1)) }
+            presetChip("Almost gone", danger: false) { commitQuantity((initialQuantity * 0.1).rounded(toDecimalPlaces: 1)) }
+            presetChip("Used it all", danger: true)  { commitQuantity(0) }
         }
     }
 
@@ -502,22 +493,25 @@ struct InventoryItemDetail: View {
 
     // MARK: derived
 
-    private var quantityLabel: String { item.amountDisplay }
-
-    private var daysLeftEstimate: Int {
-        let model = item.decayModel
-        let scanDate = item.lastScannedAt ?? item.addedAt
-        for day in 0...60 {
-            let pretendScanDate = scanDate.addingTimeInterval(-Double(day) * 86_400)
-            let projected = model.confidence(
-                lastScanConfidence: item.measureConfidence,
-                lastScanDate: pretendScanDate,
-                householdSize: UserPreferences.shared.householdSize,
-                usageHistory: item.quantityLog
-            )
-            if projected < 0.05 { return day }
+    /// Stepper label reflects the local working value (not yet committed), with
+    /// the same kg/l auto-scaling as `amountDisplay`.
+    private var quantityLabel: String {
+        let v = quantity
+        switch item.measureUnit {
+        case .g  where v >= 1000: return "\(InventoryItem.formatNumber(v / 1000)) kg"
+        case .ml where v >= 1000: return "\(InventoryItem.formatNumber(v / 1000)) l"
+        default: return "\(InventoryItem.formatNumber(v)) \(item.measureUnit.rawValue)"
         }
-        return 30
+    }
+
+    /// Days until availability falls below 5%, projecting the v3 read-time
+    /// confidence forward from now.
+    private var daysLeftEstimate: Int {
+        for day in 0...60 {
+            let future = Date.now.addingTimeInterval(Double(day) * 86_400)
+            if item.availabilityConfidence(at: future) < 0.05 { return day }
+        }
+        return 60
     }
 
     private var relativeScanDate: String {

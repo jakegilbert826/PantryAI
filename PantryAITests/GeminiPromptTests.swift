@@ -26,7 +26,7 @@ final class GeminiPromptTests: XCTestCase {
 
     func testRecipePromptEmbedsInventoryAndPreferencesAsJSON() {
         let inventory = [
-            InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0),
+            InventoryItem(name: "Rice", foodCategory: .dryGoods),
         ]
         let prefs = [RecipePreferenceSnapshot(recipeName: "Curry", liked: true)]
         let prompt = GeminiService.recipePrompt(inventory: inventory, preferences: prefs)
@@ -44,7 +44,7 @@ final class GeminiPromptTests: XCTestCase {
     func testRecipeDetailPromptNamesRecipeAndIncludesInventory() {
         let inventory = [
             InventoryItem(name: "Eggs", foodCategory: .dairy,
-                          measureConfidence: 1.0, lastScannedAt: .now),
+                          lastScannedAt: .now),
         ]
         let prompt = GeminiService.recipeDetailPrompt(recipe: "Shakshuka", inventory: inventory)
         XCTAssertTrue(prompt.contains("Shakshuka"))

@@ -14,6 +14,7 @@ struct PantryAIApp: App {
         let schema = Schema([
             InventoryItem.self,
             ItemQuantityLog.self,
+            ConsumptionProfile.self,
             RecipePreference.self,
             ScanSession.self,
         ])
@@ -21,7 +22,15 @@ struct PantryAIApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // v3 store-wipe migration (design §11.2): there is no production data
+            // to preserve, so on an incompatible schema we delete the store and
+            // recreate it fresh rather than authoring a SchemaMigrationPlan.
+            PantryAIApp.wipePersistentStore()
+            do {
+                return try ModelContainer(for: schema, configurations: [configuration])
+            } catch {
+                fatalError("Could not create ModelContainer after wipe: \(error)")
+            }
         }
     }()
 
@@ -30,11 +39,18 @@ struct PantryAIApp: App {
             RootView()
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)
-                .onAppear {
-                    InventoryItem.migrateBaseUnits(in: sharedModelContainer.mainContext)
-                }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// Deletes the default on-disk SwiftData store files so the next
+    /// `ModelContainer` init starts clean.
+    private static func wipePersistentStore() {
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        for name in ["default.store", "default.store-shm", "default.store-wal"] {
+            try? fm.removeItem(at: appSupport.appendingPathComponent(name))
+        }
     }
 }
 

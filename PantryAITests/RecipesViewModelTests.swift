@@ -27,7 +27,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Fried Rice", coveragePercent: 90,
                              missingIngredients: [], requiredIngredients: ["rice"]),
         ]
-        try seed([InventoryItem(name: "Rice", foodCategory: .dryGoods, measureConfidence: 1.0)])
+        try seed([InventoryItem(name: "Rice", foodCategory: .dryGoods)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
         await vm.refresh()
 
@@ -48,9 +48,9 @@ final class RecipesViewModelTests: XCTestCase {
     func testPreferExpiringSoonSortsInventoryByAscendingConfidence() async throws {
         try seed([
             InventoryItem(name: "Fresh", foodCategory: .dryGoods,
-                          measureConfidence: 1.0, lastScannedAt: .now),
+                          lastScannedAt: .now),
             InventoryItem(name: "Expiring", foodCategory: .freshProduce,
-                          measureConfidence: 1.0, lastScannedAt: .daysAgo(10)),
+                          lastScannedAt: .daysAgo(10)),
         ])
         let vm = RecipesViewModel(context: context, gemini: gemini)
         vm.preferExpiringSoon = true
@@ -92,7 +92,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Pasta", coveragePercent: 80,
                              missingIngredients: [], requiredIngredients: ["pasta"]),
         ]
-        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods, measureConfidence: 1.0)])
+        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
 
         await vm.refresh()
@@ -108,7 +108,7 @@ final class RecipesViewModelTests: XCTestCase {
             RecipeSuggestion(name: "Pasta", coveragePercent: 80,
                              missingIngredients: [], requiredIngredients: ["pasta"]),
         ]
-        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods, measureConfidence: 1.0)])
+        try seed([InventoryItem(name: "Pasta", foodCategory: .dryGoods)])
         let vm = RecipesViewModel(context: context, gemini: gemini)
 
         await vm.refresh()

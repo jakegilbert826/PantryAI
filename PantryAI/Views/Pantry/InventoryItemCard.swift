@@ -42,7 +42,7 @@ struct InventoryItemCard: View {
                 Ring(percentage: confidence, size: 32, stroke: 4)
             }
             if AppConfig.showDecayModelDebug {
-                Text(item.decayModel.modelIdentifier)
+                Text(decayDebugLabel)
                     .font(.system(size: 9, weight: .semibold).monospaced())
                     .foregroundStyle(Theme.ink2.opacity(0.6))
             }
@@ -67,5 +67,13 @@ struct InventoryItemCard: View {
     private var subtitle: String {
         if let brand = item.brandName { return brand }
         return item.foodCategory.displayName.lowercased()
+    }
+
+    /// v3 debug readout: sealed half-life (∞ for shelf-stable / opened state)
+    /// and current presence confidence.
+    private var decayDebugLabel: String {
+        let hl = item.effectiveHalfLife().map { "H\(InventoryItem.formatNumber($0))" } ?? "H∞"
+        let presence = Int((item.presenceConfidence() * 100).rounded())
+        return "\(hl) P\(presence)\(item.isOpened ? " open" : "")"
     }
 }

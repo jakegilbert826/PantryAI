@@ -10,6 +10,7 @@ enum TestModelContainer {
         let schema = Schema([
             InventoryItem.self,
             ItemQuantityLog.self,
+            ConsumptionProfile.self,
             RecipePreference.self,
             ScanSession.self,
         ])

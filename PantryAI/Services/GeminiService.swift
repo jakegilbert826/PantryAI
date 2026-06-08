@@ -389,7 +389,7 @@ extension GeminiService {
 
     static func recipePrompt(inventory: [InventoryItem], preferences: [RecipePreferenceSnapshot]) -> String {
         let inv = inventory.map { item -> [String: Any] in
-            let qty: Any = item.measureValue.map { $0 > 0 ? ($0 as Any) : ("unknown" as Any) } ?? ("unknown" as Any)
+            let qty: Any = item.quantityMeanDisplay.map { $0 > 0 ? ($0 as Any) : ("unknown" as Any) } ?? ("unknown" as Any)
             return [
                 "name": item.name,
                 "category": item.foodCategory.rawValue,

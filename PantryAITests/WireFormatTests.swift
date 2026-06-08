@@ -23,34 +23,31 @@ final class WireFormatTests: XCTestCase {
         let item = InventoryItem(
             name: "Butter", brandName: "Kerry",
             foodCategory: .dairy,
-            measureValue: 0.75, measureUnit: .g,
-            measureConfidence: 0.9,
-            decayRateOverride: nil
+            measureUnit: .g,
+            quantity: 0.75
         )
         let wire = BackendInventoryItem(from: item)
         XCTAssertEqual(wire.id, item.id)
         XCTAssertEqual(wire.name, "Butter")
         XCTAssertEqual(wire.foodCategory, "dairy")
         XCTAssertEqual(wire.measureValue, 0.75)
-        XCTAssertNil(wire.decayRateOverride)
     }
 
     func testBackendItemRoundTripsThroughModel() {
         let item = InventoryItem(
             name: "Spinach", foodCategory: .freshProduce,
-            measureValue: 1.0, measureConfidence: 0.6
+            quantity: 1.0
         )
         let restored = BackendInventoryItem(from: item).toModel()
         XCTAssertEqual(restored.name, item.name)
         XCTAssertEqual(restored.foodCategory, item.foodCategory)
-        XCTAssertEqual(restored.measureValue, item.measureValue)
-        XCTAssertEqual(restored.measureConfidence, item.measureConfidence)
+        XCTAssertEqual(restored.lastObservedQuantity, item.lastObservedQuantity)
     }
 
     func testBackendItemUnknownCategoryFallsBackToDryGoods() {
         let json = """
         {"id":"\(UUID().uuidString)","name":"Mystery","food_category":"plutonium",
-         "measure_value":1.0,"measure_unit":"unit","measure_confidence":0.5}
+         "measure_value":1.0,"measure_unit":"unit"}
         """.data(using: .utf8)!
         let wire = try! backendDecoder().decode(BackendInventoryItem.self, from: json)
         XCTAssertEqual(wire.toModel().foodCategory, .dryGoods)
@@ -59,12 +56,11 @@ final class WireFormatTests: XCTestCase {
     func testBackendItemDecodesSnakeCaseAndISO8601() throws {
         let original = BackendInventoryItem(from: InventoryItem(
             name: "Cheese", foodCategory: .dairy,
-            measureConfidence: 0.8,
             lastScannedAt: Date(timeIntervalSince1970: 1_700_000_000)
         ))
         let data = try backendEncoder().encode(original)
         let json = String(data: data, encoding: .utf8)!
-        XCTAssertTrue(json.contains("measure_confidence"))
+        XCTAssertTrue(json.contains("measure_unit"))
         XCTAssertTrue(json.contains("last_scanned_at"))
 
         let decoded = try backendDecoder().decode(BackendInventoryItem.self, from: data)

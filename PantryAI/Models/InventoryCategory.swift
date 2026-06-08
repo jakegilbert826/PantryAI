@@ -66,6 +66,28 @@ enum PackagingCategory: String, Codable, Hashable {
     case canned, dried, frozen, fresh, beverage, condiment
 }
 
+// MARK: - Container & input mode (v3 food_reference)
+
+enum ContainerType: String, Codable, Hashable {
+    case can, bottle, bag, box, punnet, jar, carton
+}
+
+/// How the user is asked to enter an amount for a food. Maps to the v3
+/// `food_reference.default_input_mode` column.
+enum InputMode: String, Codable, Hashable {
+    case container, count, weightVolume = "weight_volume"
+}
+
+// MARK: - Observation kind (v3 typed observations)
+
+/// Each observation updates the probabilistic model differently (see §3.3 of
+/// the v3 design): a `stock` reading Kalman-fuses the mean, an `inflow` adds a
+/// purchase, `presenceOnly` refreshes presence without touching quantity, and
+/// `nonDetection` softly reduces presence after a scan that missed the item.
+enum ObservationKind: String, Codable, Hashable {
+    case stock, inflow, presenceOnly, nonDetection
+}
+
 // MARK: - Measure
 
 enum MeasureType: String, Codable, Hashable {
@@ -104,5 +126,5 @@ enum RemovalReason: String, Codable, Hashable {
 // MARK: - Quantity log
 
 enum LogSource: String, Codable, Hashable {
-    case scan, orderImport, manual, decayModel, usageLog
+    case scan, orderImport, manual, decayModel, usageLog, chat
 }
