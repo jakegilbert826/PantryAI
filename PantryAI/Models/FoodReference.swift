@@ -1,14 +1,10 @@
 import Foundation
 
-/// v3 `food_reference` row. Property names follow the v3 design (§7.1) but the
-/// `CodingKeys` / custom decoder still map to the **v0 remote columns** because
-/// the Supabase migration has not been run yet (design §11.1):
-///   - `half_life_days`        ← `decay_rate_days`
-///   - `opened_half_life_days` ← `decay_rate_opened_days`
-///   - `id`, `default_measure_type` columns are simply ignored.
-/// New v2 columns (`default_container_size`, `default_input_mode`,
-/// `substitution_group`, …) are decoded with `decodeIfPresent` so the fetch does
-/// not break before the migration lands.
+/// v3 `food_reference` row (design §7.1). The Supabase migration has been applied,
+/// so `CodingKeys` map straight to the v3 column names (PK = `canonical_name`;
+/// `half_life_days` / `opened_half_life_days`; `default_container_size`,
+/// `default_input_mode`, `substitution_group`). `measure_type` is derived in-app
+/// from the canonical unit and never stored remotely.
 struct FoodReference: Decodable {
     let canonicalName: String
     let displayName: String
@@ -35,9 +31,8 @@ struct FoodReference: Decodable {
         case defaultPackagingCategory = "default_packaging_category"
         case defaultContainerType = "default_container_type"
         case defaultContainerSize = "default_container_size"
-        // v0 remote still names these decay_rate_*; remap until migration §7.1.
-        case halfLifeDays = "decay_rate_days"
-        case openedHalfLifeDays = "decay_rate_opened_days"
+        case halfLifeDays = "half_life_days"
+        case openedHalfLifeDays = "opened_half_life_days"
         case defaultInputMode = "default_input_mode"
         case substitutionGroup = "substitution_group"
     }
@@ -54,12 +49,7 @@ struct FoodReference: Decodable {
         defaultContainerSize = try c.decodeIfPresent(Double.self, forKey: .defaultContainerSize)
         halfLifeDays = try c.decodeIfPresent(Double.self, forKey: .halfLifeDays)
         openedHalfLifeDays = try c.decodeIfPresent(Double.self, forKey: .openedHalfLifeDays)
-        // Not present on v0 remote yet → fall back to a unit-derived default.
-        if let mode = try c.decodeIfPresent(InputMode.self, forKey: .defaultInputMode) {
-            defaultInputMode = mode
-        } else {
-            defaultInputMode = Self.fallbackInputMode(for: defaultMeasureUnit)
-        }
+        defaultInputMode = try c.decode(InputMode.self, forKey: .defaultInputMode)
         substitutionGroup = try c.decodeIfPresent(String.self, forKey: .substitutionGroup)
     }
 
