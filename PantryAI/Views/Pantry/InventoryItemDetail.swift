@@ -509,7 +509,7 @@ struct InventoryItemDetail: View {
     private var daysLeftEstimate: Int {
         for day in 0...60 {
             let future = Date.now.addingTimeInterval(Double(day) * 86_400)
-            if item.availabilityConfidence(at: future) < 0.05 { return day }
+            if item.resolvedAvailabilityConfidence(at: future) < 0.05 { return day }
         }
         return 60
     }

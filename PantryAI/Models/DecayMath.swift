@@ -20,6 +20,36 @@ enum GaussianMath {
     }
 }
 
+// MARK: - Consumption parameters (read-time learned inputs)
+
+/// The learned consumption inputs to the read-time quantity decay (v3 §3.1).
+/// Resolved from an item's `ConsumptionProfile`; `.none` reproduces the
+/// pre-learning behaviour — no consumption decay and a neutral spoilage
+/// multiplier — which is what an item with no profile yet should see.
+struct ConsumptionParameters: Equatable {
+    var rate: Double        // r̄ — canonical units consumed per day
+    var rateVar: Double     // σ_r² — uncertainty in the rate estimate
+    var multiplier: Double  // personal half-life multiplier (spoilage)
+
+    static let none = ConsumptionParameters(rate: 0, rateVar: 0, multiplier: 1.0)
+
+    init(rate: Double, rateVar: Double, multiplier: Double) {
+        self.rate = rate
+        self.rateVar = rateVar
+        self.multiplier = multiplier
+    }
+
+    /// Clamp profile values into a sane read-time range (a profile should never
+    /// drive a negative rate or a non-positive half-life multiplier).
+    init(profile: ConsumptionProfile) {
+        self.init(
+            rate: max(0, profile.consumptionRatePerDay),
+            rateVar: max(0, profile.consumptionRateVar),
+            multiplier: profile.personalHalfLifeMultiplier > 0 ? profile.personalHalfLifeMultiplier : 1.0
+        )
+    }
+}
+
 // MARK: - Cold-start spoilage priors
 
 /// Population-average half-lives used until a `food_reference` lookup or learned
