@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // MARK: - Pre-confirmation scan output (not yet persisted)
 
@@ -27,6 +28,16 @@ extension InventoryItem {
     /// Days elapsed since the last hard observation.
     private func elapsedDays(to now: Date) -> Double {
         max(0, now.timeIntervalSince(lastObservedAt) / 86_400)
+    }
+
+    /// Learned consumption parameters for this item's canonical name (v3 §3.1 +
+    /// §4.2). `.none` (rate 0, multiplier 1) when there is no context or no
+    /// `ConsumptionProfile` yet — identical to the pre-learning read path.
+    /// Served from `ConsumptionRateCache` (a dictionary lookup, not a fetch), kept
+    /// warm by `ObservationEngine.record(...)`.
+    var consumptionParameters: ConsumptionParameters {
+        guard let modelContext else { return .none }
+        return ConsumptionRateCache.shared.parameters(for: canonicalName, in: modelContext)
     }
 
     /// Effective half-life in days, picking sealed vs opened and applying the
@@ -58,8 +69,10 @@ extension InventoryItem {
         quantityMeanRaw(rate: rate, at: now).map { max(0, $0) }
     }
 
-    /// Convenience for the common "no learned rate yet" read path.
-    var quantityMeanDisplay: Double? { quantityMeanDisplay() }
+    /// Displayed mean using this item's learned consumption rate (§4.2).
+    var quantityMeanDisplay: Double? {
+        quantityMeanDisplay(rate: consumptionParameters.rate)
+    }
 
     /// Quantity variance, growing with rate uncertainty over time.
     func quantityVariance(rateVar: Double = 0, at now: Date = .now) -> Double {
@@ -87,9 +100,18 @@ extension InventoryItem {
             * availabilityQuantity(threshold: threshold, rate: rate, rateVar: rateVar, at: now)
     }
 
-    /// Single 0–1 number the UI shows (ring, freshness bar). Uses the default
-    /// "no learned consumption rate" read path until learning lands (phase 6).
-    var currentConfidence: Double { availabilityConfidence() }
+    /// Read-time availability using this item's learned consumption parameters
+    /// (§3.2 + §4.2). The fully-parameterised `availabilityConfidence(...)` above
+    /// stays the testable/engine entry point; this resolves the rate for callers.
+    func resolvedAvailabilityConfidence(threshold: Double = 0, at now: Date = .now) -> Double {
+        let p = consumptionParameters
+        return availabilityConfidence(threshold: threshold, rate: p.rate,
+                                      rateVar: p.rateVar, multiplier: p.multiplier, at: now)
+    }
+
+    /// Single 0–1 number the UI shows (ring, freshness bar), now driven by the
+    /// learned consumption rate where one exists.
+    var currentConfidence: Double { resolvedAvailabilityConfidence() }
 
     var isLow: Bool { currentConfidence < 0.25 }
     var isExpiring: Bool { currentConfidence < 0.40 }
