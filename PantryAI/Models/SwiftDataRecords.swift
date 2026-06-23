@@ -14,8 +14,9 @@ final class InventoryItem {
     @Attribute(.unique) var id: UUID
 
     // identity
-    var name: String
-    var canonicalName: String
+    var name: String                   // raw scanned / typed text (provenance)
+    var canonicalName: String          // resolved food_reference PK (snake_case)
+    var displayName: String?           // food_reference display_name; nil → fall back to `name`
     var brandName: String?
 
     // classification
@@ -55,6 +56,7 @@ final class InventoryItem {
         id: UUID = UUID(),
         name: String,
         canonicalName: String? = nil,
+        displayName: String? = nil,
         brandName: String? = nil,
         packagingCategory: PackagingCategory = .dried,
         foodCategory: FoodCategory,
@@ -77,6 +79,7 @@ final class InventoryItem {
         self.id = id
         self.name = name
         self.canonicalName = canonicalName ?? name
+        self.displayName = displayName
         self.brandName = brandName
         self.packagingCategory = packagingCategory
         self.foodCategory = foodCategory
@@ -105,6 +108,11 @@ final class InventoryItem {
         self.removedAt = removedAt
         self.removalReason = removalReason
     }
+
+    /// Human-readable title for the UI: the `food_reference` display name captured
+    /// at commit, falling back to the raw scanned/typed `name` when unresolved.
+    /// Never the snake_case `canonicalName` PK.
+    var displayLabel: String { displayName ?? name }
 
     /// Derived from the stored unit — `measure_type` is never persisted (v3 §6.1).
     var measureType: MeasureType { MeasureType.from(measureUnit) }

@@ -25,6 +25,11 @@ actor FoodReferenceService {
         cache[canonicalName]
     }
 
+    /// All cached references — used to build the `CanonicalIndex` after prefetch.
+    func allReferences() -> [FoodReference] {
+        Array(cache.values)
+    }
+
     // MARK: - Private
 
     private func fetchAll() async throws -> [FoodReference] {

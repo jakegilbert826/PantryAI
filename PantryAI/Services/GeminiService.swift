@@ -270,10 +270,11 @@ final class GeminiService: GeminiServiceProtocol {
             }
         }
         let raws = try JSONDecoder().decode([Raw].self, from: data)
+        // No `?? $0.name` PK fallback (KI-002): the model's `name` is a text
+        // signal only; canonicalization happens in ScanViewModel via the resolver.
         return raws.map {
             ScannedItem(
                 name: $0.name,
-                canonicalName: $0.canonicalName ?? $0.name,
                 foodCategory: $0.foodCategory.flatMap(FoodCategory.init) ?? .dryGoods,
                 brandName: $0.brandName,
                 measureValue: $0.measureValue ?? 0,
@@ -295,10 +296,10 @@ final class GeminiService: GeminiServiceProtocol {
             let confidence: Double
         }
         let raws = try JSONDecoder().decode([Raw].self, from: data)
+        // Receipt items canonicalize via the resolver too — no PK from raw text.
         return raws.map {
             ScannedItem(
                 name: $0.name,
-                canonicalName: $0.name,
                 foodCategory: FoodCategory(rawValue: $0.category) ?? .dryGoods,
                 brandName: $0.brand,
                 measureValue: $0.quantity,
