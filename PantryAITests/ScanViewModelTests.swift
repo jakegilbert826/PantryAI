@@ -16,7 +16,25 @@ final class ScanViewModelTests: XCTestCase {
     }
 
     private func makeVM() -> ScanViewModel {
-        ScanViewModel(context: context, gemini: gemini)
+        ScanViewModel(context: context, gemini: gemini, canonicalizer: canonicalizer)
+    }
+
+    /// In-memory resolver so analyse() canonicalizes deterministically offline.
+    /// References cover the foods the mock scan returns; lexical-exact resolves
+    /// them with no confirmation needed.
+    private var canonicalizer: CanonicalizationService {
+        let refs = [
+            ref("egg", "Eggs", plural: "eggs"),
+            ref("milk", "Milk"),
+            ref("spam", "Spam"),
+        ]
+        return CanonicalizationService(index: CanonicalIndex(references: refs))
+    }
+
+    private func ref(_ canonical: String, _ display: String, plural: String? = nil) -> FoodReference {
+        FoodReference(canonicalName: canonical, displayName: display, pluralName: plural,
+                      defaultMeasureUnit: .unit, defaultStorageLocation: .fridge,
+                      defaultPackagingCategory: .fresh)
     }
 
     private func solidImage() -> UIImage {
@@ -43,11 +61,11 @@ final class ScanViewModelTests: XCTestCase {
 
     func testAnalyseMovesToReviewAndMergesDuplicates() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.6),
-            ScannedItem(name: "eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "eggs", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
-            ScannedItem(name: "Milk", canonicalName: "milk", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Milk", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.8),
         ]
         let vm = makeVM()
@@ -91,7 +109,7 @@ final class ScanViewModelTests: XCTestCase {
 
     func testToggleFlipsInclusion() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()
@@ -105,9 +123,9 @@ final class ScanViewModelTests: XCTestCase {
 
     func testCommitWritesIncludedItemsToInventory() async throws {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
-            ScannedItem(name: "Spam", canonicalName: "spam", foodCategory: .meat, brandName: nil,
+            ScannedItem(name: "Spam", foodCategory: .meat, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.5),
         ]
         let vm = makeVM()
@@ -124,7 +142,7 @@ final class ScanViewModelTests: XCTestCase {
 
     func testResetClearsState() async {
         gemini.scanResult = [
-            ScannedItem(name: "Eggs", canonicalName: "egg", foodCategory: .dairy, brandName: nil,
+            ScannedItem(name: "Eggs", foodCategory: .dairy, brandName: nil,
                         measureValue: 1, measureUnit: .unit, confidence: 0.9),
         ]
         let vm = makeVM()

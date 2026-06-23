@@ -24,9 +24,14 @@ final class ScanViewModel {
 
     private let gemini: GeminiServiceProtocol
     private let inventory: InventoryService
+    /// Injected for tests; when nil the shared (network-bootstrapped) index is used.
+    private let injectedCanonicalizer: CanonicalizationService?
 
-    init(context: ModelContext, gemini: GeminiServiceProtocol = GeminiService()) {
+    init(context: ModelContext,
+         gemini: GeminiServiceProtocol = GeminiService(),
+         canonicalizer: CanonicalizationService? = nil) {
         self.gemini = gemini
+        self.injectedCanonicalizer = canonicalizer
         self.inventory = InventoryService(context: context)
     }
 
@@ -68,6 +73,7 @@ final class ScanViewModel {
                 all.append(contentsOf: scanned)
             }
             detected = mergeDuplicates(all)
+            await resolveDetected()
             stage = .review
         } catch let err as PantryError {
             error = err
@@ -83,8 +89,56 @@ final class ScanViewModel {
         detected[idx].include.toggle()
     }
 
+    // MARK: - Canonicalization (ADR-002a)
+
+    /// Resolve every detected item to a `food_reference` PK before review. Runs
+    /// the on-device cascade (sync hot path) per item; HITL items surface in the
+    /// review UI. Bootstraps the shared index if launch prefetch hasn't finished.
+    private func resolveDetected() async {
+        let service: CanonicalizationService?
+        if let injectedCanonicalizer {
+            service = injectedCanonicalizer
+        } else {
+            if CanonicalizationService.shared == nil { await CanonicalizationService.bootstrap() }
+            service = CanonicalizationService.shared
+        }
+        guard let service else { return }
+        let source: InflowSource = captureMode == .receipt ? .receiptOCR : .pantryScan
+        for idx in detected.indices {
+            let query = CanonicalizationQuery(
+                source: source,
+                rawText: detected[idx].name,
+                brandHint: detected[idx].brandName
+            )
+            detected[idx].apply(service.resolve(query))
+        }
+    }
+
+    /// HITL pick: lock an item to a chosen candidate and feed the correction back
+    /// into the alias flywheel (local index + Supabase).
+    func confirm(_ item: ScannedItem, as candidate: Candidate) {
+        guard let idx = detected.firstIndex(where: { $0.id == item.id }) else { return }
+        detected[idx].resolvedCanonical = candidate.canonicalName
+        detected[idx].resolvedDisplayName = candidate.displayName
+        detected[idx].requiresConfirmation = false
+        detected[idx].matchStage = .confirmed
+
+        let source: InflowSource = captureMode == .receipt ? .receiptOCR : .pantryScan
+        if let service = injectedCanonicalizer ?? CanonicalizationService.shared {
+            let entry = service.recordCorrection(rawText: item.name, source: source,
+                                                 canonicalName: candidate.canonicalName)
+            Task { await CanonicalAliasService.shared.pushCorrection(entry) }
+        }
+    }
+
+    /// True while any *included* item still lacks a confirmed PK — commit is blocked.
+    var hasUnresolvedItems: Bool {
+        detected.contains { $0.include && $0.needsConfirmation }
+    }
+
     func commit() {
-        let included = detected.filter { $0.include }
+        guard !hasUnresolvedItems else { return }
+        let included = detected.filter { $0.include && !$0.needsConfirmation }
         Task { await commit(included) }
     }
 
@@ -95,9 +149,12 @@ final class ScanViewModel {
             let quantity: Double? = scanned.measureValue > 0 ? scanned.measureValue : nil
             let cv = SourceReliability.cv(for: .scan, kind: .stock,
                                           assumedSize: false, measurementConfidence: scanned.confidence)
+            // Guaranteed non-nil: commit() filters out items still needing confirmation.
+            let canonical = scanned.resolvedCanonical ?? scanned.name
             let item = InventoryItem(
                 name: scanned.name,
-                canonicalName: scanned.canonicalName,
+                canonicalName: canonical,
+                displayName: scanned.resolvedDisplayName,
                 brandName: scanned.brandName,
                 foodCategory: scanned.foodCategory,
                 measureUnit: scanned.measureUnit,
@@ -120,6 +177,9 @@ final class ScanViewModel {
 
     private func applyReferenceDefaults(to item: InventoryItem) async {
         guard let ref = await FoodReferenceService.shared.lookup(canonicalName: item.canonicalName) else { return }
+        // Authoritative display name from food_reference (overrides the candidate's,
+        // which may have been a fuzzy/HITL pick before confirmation).
+        item.displayName = ref.displayName
         item.packagingCategory = ref.defaultPackagingCategory
         item.storageLocation = ref.defaultStorageLocation
         // Reference half-lives override the category cold-start priors.
@@ -135,9 +195,10 @@ final class ScanViewModel {
     }
 
     private func mergeDuplicates(_ items: [ScannedItem]) -> [ScannedItem] {
+        // Pre-resolution: dedup by raw name (PKs aren't assigned yet).
         var keyed: [String: ScannedItem] = [:]
         for item in items {
-            let key = item.canonicalName.lowercased()
+            let key = item.name.lowercased()
             if let existing = keyed[key] {
                 if item.confidence > existing.confidence { keyed[key] = item }
             } else {

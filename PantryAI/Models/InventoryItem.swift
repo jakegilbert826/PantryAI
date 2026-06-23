@@ -6,13 +6,48 @@ import SwiftData
 struct ScannedItem: Identifiable, Hashable {
     let id = UUID()
     var name: String
-    var canonicalName: String
     var foodCategory: FoodCategory
     var brandName: String?
     var measureValue: Double
     var measureUnit: MeasureUnit
     var confidence: Double
     var include: Bool = true
+
+    // MARK: Canonicalization (ADR-002a)
+    // Populated by `CanonicalizationService` after `analyse()`. The model's raw
+    // `name` is only a text signal — the committed PK is `resolvedCanonical`,
+    // a real `food_reference` key (or nil until the user confirms). This closes
+    // KI-002: no free-text guess is ever used as a PK.
+
+    /// Resolved `food_reference` PK, or `nil` when unresolved.
+    var resolvedCanonical: String?
+    /// Display name for the resolved PK (for the review UI).
+    var resolvedDisplayName: String?
+    /// Which cascade layer resolved it.
+    var matchStage: MatchStage = .none
+    /// True until a trusted/auto-accepted or human-confirmed PK exists.
+    var requiresConfirmation: Bool = true
+    /// Ranked candidates for the HITL picker.
+    var candidates: [Candidate] = []
+
+    /// Blocks commit until a real PK is locked in (resolved and not pending).
+    var needsConfirmation: Bool { resolvedCanonical == nil || requiresConfirmation }
+
+    /// Title shown in review: the resolved food name once confirmed, else the
+    /// raw scanned name.
+    var displayTitle: String {
+        if !requiresConfirmation, let name = resolvedDisplayName { return name }
+        return name
+    }
+
+    /// Fold a resolver result into this item.
+    mutating func apply(_ r: CanonicalResolution) {
+        resolvedCanonical = r.canonicalName
+        resolvedDisplayName = r.candidates.first { $0.canonicalName == r.canonicalName }?.displayName
+        matchStage = r.matchedVia
+        requiresConfirmation = r.requiresConfirmation
+        candidates = r.candidates
+    }
 }
 
 // MARK: - v3 read-time decay model

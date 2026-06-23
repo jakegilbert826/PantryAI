@@ -7,7 +7,8 @@ struct PantryAIApp: App {
 
     init() {
         TestSupport.applyLaunchArgumentsIfNeeded()
-        Task { await FoodReferenceService.shared.prefetch() }
+        // Builds the canonicalization index (also prefetches food_reference).
+        Task { await CanonicalizationService.bootstrap() }
     }
 
     var sharedModelContainer: ModelContainer = {

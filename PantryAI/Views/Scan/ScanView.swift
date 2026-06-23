@@ -328,20 +328,31 @@ private struct ReviewStage: View {
                 .padding(.top, 70)
                 .padding(.horizontal, 22)
 
-                Text("Tap to toggle. Confirmed items will join your pantry.")
+                Text("Tap to toggle. Confirm any items we weren't sure about before adding.")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.ink2)
                     .padding(.horizontal, 22)
 
                 VStack(spacing: 12) {
                     ForEach(vm.detected) { item in
-                        DetectedRow(item: item, toggle: { vm.toggle(item) })
+                        DetectedRow(item: item, vm: vm)
                     }
                 }
                 .padding(.horizontal, 22)
 
-                PillButton(title: "Add \(vm.detected.filter { $0.include }.count) to pantry", icon: "arrow.right", variant: .solid) {
-                    vm.commit()
+                let addCount = vm.detected.filter { $0.include && !$0.needsConfirmation }.count
+                VStack(spacing: 8) {
+                    PillButton(title: "Add \(addCount) to pantry", icon: "arrow.right", variant: .solid) {
+                        vm.commit()
+                    }
+                    .opacity(vm.hasUnresolvedItems ? 0.4 : 1)
+                    .disabled(vm.hasUnresolvedItems)
+
+                    if vm.hasUnresolvedItems {
+                        Text("Confirm the highlighted items to continue.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.ink3)
+                    }
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 8)
@@ -354,41 +365,105 @@ private struct ReviewStage: View {
 
 private struct DetectedRow: View {
     let item: ScannedItem
-    let toggle: () -> Void
+    @Bindable var vm: ScanViewModel
+
+    /// Highlight rows the resolver couldn't auto-accept (HITL, ADR-002a).
+    private var needsConfirm: Bool { item.include && item.needsConfirmation }
 
     var body: some View {
-        Button(action: toggle) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Theme.bg)
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
-                    Image(systemName: item.include ? "checkmark" : "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Theme.ink)
-                }
-                .frame(width: 50, height: 50)
+        VStack(alignment: .leading, spacing: 10) {
+            Button { vm.toggle(item) } label: {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Theme.bg)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
+                        Image(systemName: item.include ? "checkmark" : "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Theme.ink)
+                    }
+                    .frame(width: 50, height: 50)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    DisplayText(text: item.canonicalName, size: 19)
-                    Text("\(item.foodCategory.displayName) · \(Int(item.confidence * 100))% confident")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.ink2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        DisplayText(text: item.displayTitle, size: 19)
+                        Text(subtitle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.ink2)
+                    }
+                    Spacer()
                 }
-                Spacer()
             }
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(item.include ? item.foodCategory.cardColor : Theme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Theme.ink, lineWidth: Theme.strokeWidth)
-            )
+            .buttonStyle(.plain)
+
+            if needsConfirm { confirmPanel }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(item.include ? item.foodCategory.cardColor : Theme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(needsConfirm ? Theme.amber : Theme.ink,
+                        lineWidth: needsConfirm ? Theme.strokeWidth + 1 : Theme.strokeWidth)
+        )
+    }
+
+    private var subtitle: String {
+        if !item.requiresConfirmation, item.resolvedCanonical != nil {
+            return "\(item.foodCategory.displayName) · matched"
+        }
+        return "\(item.foodCategory.displayName) · \(Int(item.confidence * 100))% confident"
+    }
+
+    /// HITL picker: top suggestion + alternatives. Below-threshold items have no
+    /// candidate to auto-fill, so they show the alternatives only.
+    @ViewBuilder private var confirmPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().overlay(Theme.ink.opacity(0.2))
+            if item.candidates.isEmpty {
+                Text("No close match — uncheck to skip for now.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.ink2)
+            } else {
+                Text("Which of these is it?")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.ink2)
+                FlowChips(candidates: item.candidates) { vm.confirm(item, as: $0) }
+            }
+        }
+    }
+}
+
+/// Wrapping row of candidate chips for the HITL picker.
+private struct FlowChips: View {
+    let candidates: [Candidate]
+    let onPick: (Candidate) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(candidates) { candidate in
+                Button { onPick(candidate) } label: {
+                    HStack(spacing: 6) {
+                        Text(candidate.displayName)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        Text("\(Int(candidate.score * 100))%")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.ink3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(
+                        Capsule().fill(Theme.bg)
+                    )
+                    .overlay(
+                        Capsule().stroke(Theme.ink, lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 
