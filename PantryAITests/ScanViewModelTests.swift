@@ -15,8 +15,9 @@ final class ScanViewModelTests: XCTestCase {
         gemini = MockGeminiService()
     }
 
-    private func makeVM() -> ScanViewModel {
-        ScanViewModel(context: context, gemini: gemini, canonicalizer: canonicalizer)
+    private func makeVM(receiptScanner: ReceiptScanning = MockReceiptScanner()) -> ScanViewModel {
+        ScanViewModel(context: context, gemini: gemini,
+                      receiptScanner: receiptScanner, canonicalizer: canonicalizer)
     }
 
     /// In-memory resolver so analyse() canonicalizes deterministically offline.
@@ -76,6 +77,24 @@ final class ScanViewModelTests: XCTestCase {
         XCTAssertEqual(vm.detected.count, 2, "duplicate name should be merged")
         XCTAssertEqual(vm.detected.first?.name.lowercased(), "eggs")
         XCTAssertEqual(vm.detected.first?.confidence, 0.9)
+    }
+
+    func testReceiptCaptureRoutesToScannerNotGemini() async {
+        let scanner = MockReceiptScanner()
+        scanner.result = [
+            ScannedItem(name: "Milk", foodCategory: .dryGoods, brandName: nil,
+                        measureValue: 0, measureUnit: .unit, confidence: 0.7),
+        ]
+        let vm = makeVM(receiptScanner: scanner)
+        vm.startReceiptCapture()
+        vm.add(photo: solidImage())
+        await vm.analyse()
+
+        XCTAssertEqual(scanner.callCount, 1, "receipt path must use the OCR scanner")
+        XCTAssertEqual(gemini.scanCallCount, 0, "Gemini must not be called for receipts")
+        XCTAssertEqual(vm.stage, .review)
+        // "Milk" resolves exactly to the `milk` reference via the lexical layer.
+        XCTAssertEqual(vm.detected.first?.resolvedCanonical, "milk")
     }
 
     func testInitialStageIsMethodPicker() {
