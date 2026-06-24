@@ -23,14 +23,17 @@ final class ScanViewModel {
     var isStreaming = false
 
     private let gemini: GeminiServiceProtocol
+    private let receiptScanner: ReceiptScanning
     private let inventory: InventoryService
     /// Injected for tests; when nil the shared (network-bootstrapped) index is used.
     private let injectedCanonicalizer: CanonicalizationService?
 
     init(context: ModelContext,
          gemini: GeminiServiceProtocol = GeminiService(),
+         receiptScanner: ReceiptScanning = VisionReceiptScanner(),
          canonicalizer: CanonicalizationService? = nil) {
         self.gemini = gemini
+        self.receiptScanner = receiptScanner
         self.injectedCanonicalizer = canonicalizer
         self.inventory = InventoryService(context: context)
     }
@@ -68,7 +71,8 @@ final class ScanViewModel {
             for image in captured {
                 let scanned = switch captureMode {
                 case .photo:   try await gemini.scanInventory(imageData: image)
-                case .receipt: try await gemini.scanReceipt(imageData: image)
+                // ADR-002 v1: receipts are parsed on-device (Vision OCR), no Gemini.
+                case .receipt: try await receiptScanner.scan(imageData: image)
                 }
                 all.append(contentsOf: scanned)
             }

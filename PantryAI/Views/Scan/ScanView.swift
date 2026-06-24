@@ -299,7 +299,7 @@ private struct AnalysingStage: View {
                 .rotationEffect(.degrees(360))
                 .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: UUID())
             DisplayText(text: vm.captureMode == .receipt ? "Reading the receipt…" : "Reading the shelf…", size: 24, italic: true)
-            Text(vm.captureMode == .receipt ? "Gemini is parsing your grocery items." : "Gemini Vision is identifying items.")
+            Text(vm.captureMode == .receipt ? "Reading your receipt on-device." : "Gemini Vision is identifying items.")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.ink2)
             Spacer()
