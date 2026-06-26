@@ -36,7 +36,9 @@ from canonicalization import (                                   # noqa: E402
     CanonicalizationService,
     CoarseType,
     InflowSource,
+    LineInput,
 )
+from constants import SMALL_TEXT_PENALTY                          # noqa: E402
 from report import MatchRow, ReportItem, render_report           # noqa: E402
 
 
@@ -52,6 +54,10 @@ class ExperimentConfig:
     confidence_threshold: float = 0.2
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN
+    # Per-line OCR resolution: forward at most this many of the most-prominent
+    # lines (None = all), and how hard to penalize small text (0..1).
+    top_n_lines: Optional[int] = None
+    small_text_penalty: float = SMALL_TEXT_PENALTY
 
 
 # Map coarse detector labels → canonicalization CoarseType (enables veto + boost).
@@ -77,14 +83,19 @@ def _process_detection(
     crop_path = crops_dir / f"{Path(source_name).stem}_box_{det.box_id}.jpg"
     cv2.imwrite(str(crop_path), det.crop)
 
-    ocr_lines = ocr.read_text(crop_path)
-    ocr_text = " ".join(ocr_lines)
+    # Keep Vision's per-line structure (with bbox prominence) instead of
+    # collapsing it into one blob — see canon.resolve_top_n_lines for why.
+    ranked = ocr.prominent_lines(crop_path, top_n=cfg.top_n_lines)
+    lines = [LineInput(text, prominence) for text, prominence in ranked]
+    # Display string keeps the lines in prominence order, tallest first.
+    ocr_text = " | ".join(text for text, _ in ranked)
 
-    candidates = canon.resolve_top_n(
-        ocr_text,
+    candidates = canon.resolve_top_n_lines(
+        lines,
         n=cfg.top_n,
         source=cfg.source,
         coarse_type=_coarse_type_for(det.label),
+        small_text_penalty=cfg.small_text_penalty,
     )
     rows = [MatchRow(c.canonical_name, c.display_name, c.score) for c in candidates]
 

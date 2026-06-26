@@ -38,6 +38,7 @@ from constants import (
     MERCHANT_ABBREVIATIONS,
     NON_ALPHANUMERIC_PATTERN,
     PACK_SIZE_PATTERNS,
+    SMALL_TEXT_PENALTY,
     STORE_CODE_PATTERN,
     WHITESPACE_PATTERN,
 )
@@ -145,6 +146,15 @@ class Candidate:
     canonical_name: str
     display_name: str
     score: float
+
+
+@dataclass
+class LineInput:
+    """One OCR line plus its normalized bounding-box prominence (0..1, where
+    1.0 is the most prominent line in the crop). Feeds resolve_lines() so the
+    cascade runs per line and the product name isn't diluted by fine print."""
+    text: str
+    prominence: float = 1.0
 
 
 @dataclass
@@ -501,6 +511,78 @@ class CanonicalizationService:
         candidates = self.resolve_top_n(raw_text, n, source, coarse_type, ocr_tokens, visual_class, brand_hint)
         for c in candidates:
             print(c.canonical_name, c.score)
+
+    # ------------------------------------------------------------------
+    # Per-line resolution (prominence-weighted) — fixes the blob-Dice problem
+    # ------------------------------------------------------------------
+
+    def resolve_top_n_lines(
+        self,
+        lines: list[LineInput] | list[str],
+        n: int = 5,
+        source: InflowSource = InflowSource.PANTRY_SCAN,
+        coarse_type: Optional[CoarseType] = None,
+        small_text_penalty: float = SMALL_TEXT_PENALTY,
+    ) -> list[Candidate]:
+        """Resolve each OCR line independently, then merge into one ranked list.
+
+        Running the cascade per line keeps the token-set-Dice denominator small
+        (a line, not the whole label), so a true match like "corn ker" no longer
+        gets buried under the nutrition panel. Each line's candidate scores are
+        scaled by a prominence factor so the largest text (usually the product
+        name) dominates; `small_text_penalty` tunes how aggressive that bias is.
+        """
+        seen: dict[str, Candidate] = {}
+        for line in lines:
+            text = line.text if isinstance(line, LineInput) else line
+            prominence = line.prominence if isinstance(line, LineInput) else 1.0
+            if not text or not text.strip():
+                continue
+            factor = 1.0 - small_text_penalty * (1.0 - prominence)
+            for c in self.resolve_top_n(text, n, source, coarse_type):
+                weighted = c.score * factor
+                existing = seen.get(c.canonical_name)
+                if existing is None or existing.score < weighted:
+                    seen[c.canonical_name] = Candidate(c.canonical_name, c.display_name, weighted)
+        return sorted(seen.values(), key=lambda c: c.score, reverse=True)[:n]
+
+    def resolve_lines(
+        self,
+        lines: list[LineInput] | list[str],
+        source: InflowSource = InflowSource.PANTRY_SCAN,
+        coarse_type: Optional[CoarseType] = None,
+        small_text_penalty: float = SMALL_TEXT_PENALTY,
+    ) -> CanonicalResolution:
+        """Per-line analogue of resolve(): returns the best prominence-weighted
+        match across all OCR lines, gated by the same fuzzy floor."""
+        candidates = self.resolve_top_n_lines(
+            lines,
+            n=FUZZY_DEFAULT_CANDIDATE_LIMIT,
+            source=source,
+            coarse_type=coarse_type,
+            small_text_penalty=small_text_penalty,
+        )
+        if candidates and candidates[0].score >= FUZZY_MATCH_FLOOR:
+            top = candidates[0]
+            return CanonicalResolution(
+                canonical_name=top.canonical_name,
+                confidence=top.score,
+                candidates=candidates,
+                matched_via=MatchStage.FUZZY,
+                requires_confirmation=top.score < AUTO_ACCEPT_CONFIDENCE,
+            )
+        return CanonicalResolution.unresolved(via=MatchStage.NONE, candidates=candidates)
+
+    def print_top_n_lines(
+        self,
+        lines: list[LineInput] | list[str],
+        n: int = 5,
+        source: InflowSource = InflowSource.PANTRY_SCAN,
+        coarse_type: Optional[CoarseType] = None,
+        small_text_penalty: float = SMALL_TEXT_PENALTY,
+    ) -> None:
+        for c in self.resolve_top_n_lines(lines, n, source, coarse_type, small_text_penalty):
+            print(c.canonical_name, round(c.score, 3))
 
     def record_correction(
         self,

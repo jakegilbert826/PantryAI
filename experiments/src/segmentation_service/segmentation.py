@@ -70,8 +70,13 @@ class SegmentationService:
         model_path: str | Path,
         classes: Optional[Sequence[str]] = None,
         confidence_threshold: float = 0.2,
+        min_area_fraction: float = 0.0,
     ):
         self.confidence_threshold = confidence_threshold
+        # Drop detections smaller than this fraction of the frame area before
+        # they ever reach OCR — tiny boxes are usually background clutter whose
+        # OCR yields noise. 0.0 keeps every detection (default, non-breaking).
+        self.min_area_fraction = min_area_fraction
         # Open-vocab classes need the MobileCLIP text encoder; resolve it from
         # the model's own directory (where mobileclip2_b.ts lives) rather than
         # the CWD, so it is never re-downloaded.
@@ -114,6 +119,8 @@ class SegmentationService:
         )
         result = results[0]
         height, width = image.shape[:2]
+        frame_area = max(1, height * width)
+        min_area = self.min_area_fraction * frame_area
 
         detections: list[Detection] = []
         for box_id, box in enumerate(result.boxes):
@@ -121,6 +128,8 @@ class SegmentationService:
             xmin, xmax = max(0, int(xmin)), min(width, int(xmax))
             ymin, ymax = max(0, int(ymin)), min(height, int(ymax))
             if (xmax - xmin) <= 0 or (ymax - ymin) <= 0:
+                continue
+            if (xmax - xmin) * (ymax - ymin) < min_area:
                 continue
 
             cls_id = int(box.cls[0].item())
@@ -133,6 +142,8 @@ class SegmentationService:
                     crop=image[ymin:ymax, xmin:xmax].copy(),
                 )
             )
+        # Most prominent (largest) items first; box_id still identifies each crop.
+        detections.sort(key=lambda d: d.area, reverse=True)
         return detections
 
     # -------------------------------------------------------------- drawing
