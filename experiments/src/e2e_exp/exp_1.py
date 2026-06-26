@@ -24,9 +24,11 @@ import cv2
 from dotenv import load_dotenv
 
 # Make the sibling service packages importable regardless of CWD.
-EXPERIMENTS_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = Path(__file__).resolve().parent.parent          # .../experiments/src
+EXPERIMENTS_ROOT = SRC_ROOT.parent                          # .../experiments
+DATA_ROOT = EXPERIMENTS_ROOT / "data"
 for service_dir in ("segmentation_service", "ocr_service", "canonicalization_service"):
-    sys.path.insert(0, str(EXPERIMENTS_ROOT / service_dir))
+    sys.path.insert(0, str(SRC_ROOT / service_dir))
 
 from segmentation import Detection, SegmentationService          # noqa: E402
 from ocr import OCRService                                       # noqa: E402
@@ -42,10 +44,10 @@ from report import MatchRow, ReportItem, render_report           # noqa: E402
 
 @dataclass
 class ExperimentConfig:
-    input_dir: Path = EXPERIMENTS_ROOT / "cv_input"
-    crops_dir: Path = EXPERIMENTS_ROOT / "e2e_exp" / "work" / "crops"
-    report_path: Path = EXPERIMENTS_ROOT / "e2e_exp" / "work" / "exp_1_report.html"
-    model_path: Path = EXPERIMENTS_ROOT / "models" / "yoloe-26n-seg.pt"
+    input_dir: Path = DATA_ROOT / "cv_input"
+    crops_dir: Path = DATA_ROOT / "work" / "crops"
+    report_path: Path = DATA_ROOT / "work" / "exp_1_report.html"
+    model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg.pt"
     classes: tuple[str, ...] = ("product", "produce")
     confidence_threshold: float = 0.2
     top_n: int = 5

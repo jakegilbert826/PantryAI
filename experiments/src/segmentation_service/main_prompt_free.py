@@ -1,18 +1,20 @@
 import os
 import glob
+from pathlib import Path
 import cv2
 from ultralytics import YOLOE
 
 # 1. Configuration
-IMAGE_DIR = "../cv_input"  # Folder containing your test pictures
-OUTPUT_DIR = "../cv_output"  # Where the isolated items will be saved
+DATA = Path(__file__).resolve().parents[2] / "data"  # .../experiments/data
+IMAGE_DIR = str(DATA / "cv_input")  # Folder containing your test pictures
+OUTPUT_DIR = str(DATA / "cv_output")  # Where the isolated items will be saved
 CONFIDENCE_THRESHOLD = 0.3  # Adjust this to filter out noise or catch more items
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 2. Load the Open-Vocabulary, Prompt-Free Nano Model
 print("Downloading/Loading YOLOE-26 Nano Prompt-Free weights...")
-model = YOLOE("../../CV/PantryAI/yoloe-26n-seg-pf.pt")
+model = YOLOE(str(DATA / "models" / "yoloe-26n-seg-pf.pt"))
 
 # 3. Grab all image files from your directory
 image_extensions = ("*.jpg", "*.jpeg", "*.png", "*.BMP")

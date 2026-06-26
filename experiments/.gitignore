@@ -6,15 +6,12 @@ __pycache__/
 *.pyc
 .venv/
 
-# Model weights / large binaries
-models/
+# Data: inputs, outputs, and model weights (large / binary / generated)
+data/
+
+# Model weights / large binaries (also matches the mobileclip symlinks in src/)
 *.ts
 *.pt
 *.onnx
 *.mlmodel
 *.mlpackage
-
-# Generated experiment outputs
-e2e_exp/work/
-cv_input/
-cv_output/

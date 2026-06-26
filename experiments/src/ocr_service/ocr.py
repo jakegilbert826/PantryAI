@@ -57,4 +57,5 @@ def apple_ocr(image_path: str | Path) -> list[str]:
 
 
 if __name__ == "__main__":
-    print(apple_ocr(Path("../cv_output/IMG_4514_box_7.jpg")))
+    _data = Path(__file__).resolve().parents[2] / "data"
+    print(apple_ocr(_data / "work" / "crops" / "IMG_4514_box_7.jpg"))

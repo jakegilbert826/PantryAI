@@ -12,9 +12,10 @@ import cv2
 
 from segmentation import SegmentationService
 
-IMAGE_DIR = Path("../cv_input")
-OUTPUT_DIR = Path("../cv_output")
-MODEL_PATH = Path("../models/yoloe-26n-seg.pt")
+DATA = Path(__file__).resolve().parents[2] / "data"  # .../experiments/data
+IMAGE_DIR = DATA / "cv_input"
+OUTPUT_DIR = DATA / "cv_output"
+MODEL_PATH = DATA / "models" / "yoloe-26n-seg.pt"
 CLASSES = ["product", "produce"]
 CONFIDENCE_THRESHOLD = 0.2
 
