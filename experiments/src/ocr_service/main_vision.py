@@ -2,8 +2,12 @@
 
 from pathlib import Path
 
-from ocr import apple_ocr
+from ocr import OCRService
 
 if __name__ == "__main__":
     _data = Path(__file__).resolve().parents[2] / "data"
-    print(apple_ocr(_data / "work" / "crops" / "IMG_4514_box_7.jpg"))
+    _crop = _data / "work" / "crops" / "IMG_4514_box_7.jpg"
+
+    print("Lines ranked by bounding-box prominence (product name should be near the top):")
+    for text, prominence in OCRService().prominent_lines(_crop):
+        print(f"  {prominence:.2f}  {text}")

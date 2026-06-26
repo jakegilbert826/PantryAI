@@ -31,11 +31,17 @@ for service_dir in ("segmentation_service", "ocr_service", "canonicalization_ser
     sys.path.insert(0, str(SRC_ROOT / service_dir))
 
 from segmentation import Detection, SegmentationService          # noqa: E402
-from ocr import OCRService                                       # noqa: E402
+from ocr import OCRService, prominence_weights                   # noqa: E402
 from canonicalization import (                                   # noqa: E402
     CanonicalizationService,
     CoarseType,
     InflowSource,
+    LineInput,
+)
+from constants import (                                          # noqa: E402
+    MAX_COMBINE_LINES,
+    MAX_COMBINE_SIZE,
+    SMALL_TEXT_PENALTY,
 )
 from report import MatchRow, ReportItem, render_report           # noqa: E402
 
@@ -52,6 +58,13 @@ class ExperimentConfig:
     confidence_threshold: float = 0.2
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN
+    # Per-line OCR resolution: forward at most this many of the most-prominent
+    # lines (None = all), and how hard to penalize small text (0..1).
+    top_n_lines: Optional[int] = None
+    small_text_penalty: float = SMALL_TEXT_PENALTY
+    # Multi-line name recombination (joins of the top-K prominent lines).
+    max_combine_lines: int = MAX_COMBINE_LINES
+    max_combine_size: int = MAX_COMBINE_SIZE
 
 
 # Map coarse detector labels → canonicalization CoarseType (enables veto + boost).
@@ -77,14 +90,32 @@ def _process_detection(
     crop_path = crops_dir / f"{Path(source_name).stem}_box_{det.box_id}.jpg"
     cv2.imwrite(str(crop_path), det.crop)
 
-    ocr_lines = ocr.read_text(crop_path)
-    ocr_text = " ".join(ocr_lines)
+    # Keep Vision's per-line structure (bbox prominence + reading order) instead
+    # of collapsing it into one blob — see canon.resolve_top_n_lines for why.
+    # read_observations preserves reading order, which the recombination step
+    # needs to join split names ("Black" + "Beans" -> "Black Beans").
+    observations = ocr.read_observations(crop_path)
+    weights = prominence_weights(observations)
+    lines = [
+        LineInput(obs.text.strip(), prominence, order=i)
+        for i, (obs, prominence) in enumerate(zip(observations, weights))
+        if obs.text.strip()
+    ]
+    # Optional hard cap on forwarded lines (top-N by prominence), order preserved.
+    if cfg.top_n_lines is not None and len(lines) > cfg.top_n_lines:
+        keep = {l.order for l in sorted(lines, key=lambda l: l.prominence, reverse=True)[:cfg.top_n_lines]}
+        lines = [l for l in lines if l.order in keep]
+    # Display string lists lines tallest-first.
+    ocr_text = " | ".join(l.text for l in sorted(lines, key=lambda l: l.prominence, reverse=True))
 
-    candidates = canon.resolve_top_n(
-        ocr_text,
+    candidates = canon.resolve_top_n_lines(
+        lines,
         n=cfg.top_n,
         source=cfg.source,
         coarse_type=_coarse_type_for(det.label),
+        small_text_penalty=cfg.small_text_penalty,
+        max_combine_lines=cfg.max_combine_lines,
+        max_combine_size=cfg.max_combine_size,
     )
     rows = [MatchRow(c.canonical_name, c.display_name, c.score) for c in candidates]
 
