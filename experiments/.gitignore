@@ -1,0 +1,20 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Model weights / large binaries
+models/
+*.ts
+*.pt
+*.onnx
+*.mlmodel
+*.mlpackage
+
+# Generated experiment outputs
+e2e_exp/work/
+cv_input/
+cv_output/

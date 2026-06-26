@@ -9,7 +9,8 @@ if __name__ == '__main__':
 
     svc = CanonicalizationService.from_supabase()
 
-    val_text = "Ptrickios Farm fresh large Tomatoes"
+    # val_text = "Ptrickios Farm fresh large Tomatoes"
+    val_text = " ".join(['220 g', 'Obela', 'GARLIC', 'HOMMUS', 'WITH SMASHED', 'FALAFEL', '220 g'])
 
     svc.print_top_n(val_text, source=InflowSource.PANTRY_SCAN, n=5)
 
