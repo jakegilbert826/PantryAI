@@ -9,7 +9,7 @@ __pycache__/
 # Data: inputs, outputs, and model weights (large / binary / generated)
 data/
 
-# Model weights / large binaries (also matches the mobileclip symlinks in src/)
+# Model weights / large binaries
 *.ts
 *.pt
 *.onnx

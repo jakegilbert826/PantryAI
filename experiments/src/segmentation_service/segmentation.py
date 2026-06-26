@@ -42,6 +42,26 @@ class Detection:
         return max(0, xmax - xmin) * max(0, ymax - ymin)
 
 
+def _use_local_text_encoder(weights_dir: Path) -> None:
+    """Point ultralytics at a local directory for YOLOE's MobileCLIP text
+    encoder so set_classes() resolves the weight there instead of
+    re-downloading it.
+
+    ultralytics looks for "mobileclip2_b.ts" relative to the CWD and then in
+    SETTINGS["weights_dir"] (also CWD-relative by default), so the lookup is
+    CWD-dependent. We override weights_dir to an absolute path in memory only —
+    bypassing the persisting setter so the user's global ultralytics config on
+    disk is left untouched.
+    """
+    if not weights_dir.is_dir():
+        return
+    try:
+        from ultralytics.utils import SETTINGS
+        dict.__setitem__(SETTINGS, "weights_dir", str(weights_dir))
+    except Exception:
+        pass
+
+
 class SegmentationService:
     """Loads a YOLOE model once and exposes stateless detection helpers."""
 
@@ -52,6 +72,10 @@ class SegmentationService:
         confidence_threshold: float = 0.2,
     ):
         self.confidence_threshold = confidence_threshold
+        # Open-vocab classes need the MobileCLIP text encoder; resolve it from
+        # the model's own directory (where mobileclip2_b.ts lives) rather than
+        # the CWD, so it is never re-downloaded.
+        _use_local_text_encoder(Path(model_path).resolve().parent)
         self._model = YOLOE(str(model_path))
         if classes:
             self._model.set_classes(list(classes))
