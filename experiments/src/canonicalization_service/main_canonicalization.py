@@ -28,3 +28,16 @@ if __name__ == '__main__':
 
     result = svc.resolve_lines(lines, source=InflowSource.PANTRY_SCAN)
     print("\nbest:", result.canonical_name, result.matched_via.value, f"{result.confidence:.2f}")
+
+    # A can of black beans whose name is split across two large-text lines.
+    # Per line, "Black" alone scores black_tea above black_beans; recombining the
+    # two prominent lines into "Black Beans" recovers it (lexical exact).
+    split = [
+        LineInput("Black", 0.95, order=0),
+        LineInput("Beans", 0.92, order=1),
+        LineInput("Part of your daily fibre", 0.30, order=2),
+    ]
+    print("\n=== split name, per-line only (max_combine_lines=1) ===")
+    svc.print_top_n_lines(split, source=InflowSource.PANTRY_SCAN, n=3, max_combine_lines=1)
+    print("\n=== split name, with recombination ===")
+    svc.print_top_n_lines(split, source=InflowSource.PANTRY_SCAN, n=3)

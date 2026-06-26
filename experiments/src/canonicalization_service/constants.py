@@ -73,3 +73,21 @@ FUZZY_DEFAULT_CANDIDATE_LIMIT = 8     # default maximum fuzzy results returned b
 # Default is deliberately moderate: brand text or a large net-weight line is
 # sometimes taller than the product name, so we bias rather than hard-filter.
 SMALL_TEXT_PENALTY = 0.5
+
+# ---------------------------------------------------------------------------
+# Multi-line name recombination
+# ---------------------------------------------------------------------------
+#
+# Per-line resolution can't see a product name split across lines ("Black" /
+# "Beans" → "black beans"), so it scores neither half as the whole and a shorter
+# distractor ("black tea") can edge it out. We additionally resolve *joins* of
+# the most-prominent lines so the full name is scored as a unit (and can hit the
+# lexical-exact path for 1.0).
+#
+# Cost is bounded to a small constant — only the top-K prominent lines are
+# eligible, and only subsets up to size C are joined — so this stays fast on
+# iPhone hardware regardless of how much fine print OCR returns. With the
+# defaults below a crop adds at most C(4,2)+C(4,3) = 10 joined queries.
+MAX_COMBINE_LINES  = 4  # K: top-K prominent lines eligible to combine (0/1 disables)
+MAX_COMBINE_SIZE   = 3  # C: largest subset of lines joined into one query
+MAX_COMBINE_TOKENS = 6  # skip any join longer than this many tokens (denominator guard)

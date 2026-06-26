@@ -25,6 +25,7 @@ import os
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import combinations
 from typing import Optional
 
 from constants import (
@@ -35,6 +36,9 @@ from constants import (
     FUZZY_DEFAULT_CANDIDATE_LIMIT,
     FUZZY_MATCH_FLOOR,
     FUZZY_TRIGRAM_SHORTLIST_SIZE,
+    MAX_COMBINE_LINES,
+    MAX_COMBINE_SIZE,
+    MAX_COMBINE_TOKENS,
     MERCHANT_ABBREVIATIONS,
     NON_ALPHANUMERIC_PATTERN,
     PACK_SIZE_PATTERNS,
@@ -152,9 +156,14 @@ class Candidate:
 class LineInput:
     """One OCR line plus its normalized bounding-box prominence (0..1, where
     1.0 is the most prominent line in the crop). Feeds resolve_lines() so the
-    cascade runs per line and the product name isn't diluted by fine print."""
+    cascade runs per line and the product name isn't diluted by fine print.
+
+    `order` is the line's Vision reading-order index; it lets the recombination
+    step join split names in reading order ("Black Beans", not "Beans Black")
+    so the join can hit the lexical-exact path."""
     text: str
     prominence: float = 1.0
+    order: int = 0
 
 
 @dataclass
@@ -523,6 +532,8 @@ class CanonicalizationService:
         source: InflowSource = InflowSource.PANTRY_SCAN,
         coarse_type: Optional[CoarseType] = None,
         small_text_penalty: float = SMALL_TEXT_PENALTY,
+        max_combine_lines: int = MAX_COMBINE_LINES,
+        max_combine_size: int = MAX_COMBINE_SIZE,
     ) -> list[Candidate]:
         """Resolve each OCR line independently, then merge into one ranked list.
 
@@ -531,19 +542,54 @@ class CanonicalizationService:
         gets buried under the nutrition panel. Each line's candidate scores are
         scaled by a prominence factor so the largest text (usually the product
         name) dominates; `small_text_penalty` tunes how aggressive that bias is.
+
+        Names split across lines ("Black" / "Beans") are recovered by also
+        resolving *joins* of the top-`max_combine_lines` prominent lines, in
+        subsets up to `max_combine_size`, in reading order. This is bounded to a
+        small constant (independent of how many lines OCR returns), so it stays
+        cheap on-device. `max_combine_lines <= 1` disables recombination.
         """
+        # Normalize inputs to LineInput so singles and joins share order/prominence.
+        items: list[LineInput] = []
+        for i, line in enumerate(lines):
+            if isinstance(line, LineInput):
+                text, prominence, order = line.text, line.prominence, line.order
+            else:
+                text, prominence, order = line, 1.0, i
+            if text and text.strip():
+                items.append(LineInput(text.strip(), prominence, order))
+
         seen: dict[str, Candidate] = {}
-        for line in lines:
-            text = line.text if isinstance(line, LineInput) else line
-            prominence = line.prominence if isinstance(line, LineInput) else 1.0
-            if not text or not text.strip():
-                continue
+        resolved: set[str] = set()  # dedup identical queries by normalized form
+
+        def _add_query(text: str, prominence: float) -> None:
+            key = normalize(text, source)
+            if not key or key in resolved:
+                return
+            resolved.add(key)
             factor = 1.0 - small_text_penalty * (1.0 - prominence)
             for c in self.resolve_top_n(text, n, source, coarse_type):
                 weighted = c.score * factor
                 existing = seen.get(c.canonical_name)
                 if existing is None or existing.score < weighted:
                     seen[c.canonical_name] = Candidate(c.canonical_name, c.display_name, weighted)
+
+        # 1. Singles — every line, prominence-penalized (never excluded).
+        for it in items:
+            _add_query(it.text, it.prominence)
+
+        # 2. Joins — only the top-K prominent lines, subsets of size 2..C.
+        if max_combine_lines >= 2 and len(items) >= 2:
+            top = sorted(items, key=lambda it: it.prominence, reverse=True)[:max_combine_lines]
+            for size in range(2, min(max_combine_size, len(top)) + 1):
+                for subset in combinations(top, size):
+                    ordered = sorted(subset, key=lambda it: it.order)
+                    joined = " ".join(it.text for it in ordered)
+                    if len(normalize(joined, source).split()) > MAX_COMBINE_TOKENS:
+                        continue
+                    mean_prominence = sum(it.prominence for it in subset) / len(subset)
+                    _add_query(joined, mean_prominence)
+
         return sorted(seen.values(), key=lambda c: c.score, reverse=True)[:n]
 
     def resolve_lines(
@@ -552,6 +598,8 @@ class CanonicalizationService:
         source: InflowSource = InflowSource.PANTRY_SCAN,
         coarse_type: Optional[CoarseType] = None,
         small_text_penalty: float = SMALL_TEXT_PENALTY,
+        max_combine_lines: int = MAX_COMBINE_LINES,
+        max_combine_size: int = MAX_COMBINE_SIZE,
     ) -> CanonicalResolution:
         """Per-line analogue of resolve(): returns the best prominence-weighted
         match across all OCR lines, gated by the same fuzzy floor."""
@@ -561,6 +609,8 @@ class CanonicalizationService:
             source=source,
             coarse_type=coarse_type,
             small_text_penalty=small_text_penalty,
+            max_combine_lines=max_combine_lines,
+            max_combine_size=max_combine_size,
         )
         if candidates and candidates[0].score >= FUZZY_MATCH_FLOOR:
             top = candidates[0]
@@ -580,8 +630,14 @@ class CanonicalizationService:
         source: InflowSource = InflowSource.PANTRY_SCAN,
         coarse_type: Optional[CoarseType] = None,
         small_text_penalty: float = SMALL_TEXT_PENALTY,
+        max_combine_lines: int = MAX_COMBINE_LINES,
+        max_combine_size: int = MAX_COMBINE_SIZE,
     ) -> None:
-        for c in self.resolve_top_n_lines(lines, n, source, coarse_type, small_text_penalty):
+        candidates = self.resolve_top_n_lines(
+            lines, n, source, coarse_type, small_text_penalty,
+            max_combine_lines, max_combine_size,
+        )
+        for c in candidates:
             print(c.canonical_name, round(c.score, 3))
 
     def record_correction(
