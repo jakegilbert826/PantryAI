@@ -396,6 +396,11 @@ class CanonicalIndex:
     def alias_count(self) -> int:
         return len(self._aliases)
 
+    @property
+    def references(self) -> list["FoodReference"]:
+        """All loaded food_reference rows (read-only view)."""
+        return list(self._references.values())
+
 
 # ---------------------------------------------------------------------------
 # CanonicalizationService (mirrors CanonicalizationService.swift)
@@ -405,6 +410,12 @@ class CanonicalizationService:
 
     def __init__(self, index: CanonicalIndex):
         self._index = index
+
+    @property
+    def references(self) -> list[FoodReference]:
+        """All loaded food_reference rows — the vocabulary an LLM fallback can
+        resolve into. Read-only; mutating the list does not touch the index."""
+        return self._index.references
 
     def resolve(
         self,

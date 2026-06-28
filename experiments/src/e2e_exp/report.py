@@ -32,6 +32,8 @@ class ReportItem:
     confidence: float
     ocr_text: str
     candidates: Sequence[MatchRow]
+    # Optional note describing an LLM fallback outcome for low-confidence crops.
+    llm_note: str | None = None
 
 
 def _img_data_uri(path: Path) -> str:
@@ -67,6 +69,12 @@ def _candidates_table(candidates: Sequence[MatchRow]) -> str:
 
 def _card(item: ReportItem) -> str:
     ocr = html.escape(item.ocr_text) if item.ocr_text else "<em>(no text)</em>"
+    llm = (
+        f"<div class='ocr'><span class='tag' style='background:#3a6ea5'>LLM</span>"
+        f"{html.escape(item.llm_note)}</div>"
+        if item.llm_note
+        else ""
+    )
     return f"""
     <div class="card">
       <div class="crop">
@@ -80,6 +88,7 @@ def _card(item: ReportItem) -> str:
       <div class="detail">
         <div class="ocr"><span class="tag">OCR</span>{ocr}</div>
         {_candidates_table(item.candidates)}
+        {llm}
       </div>
     </div>"""
 
