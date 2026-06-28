@@ -1,25 +1,33 @@
 """
-E2E experiment 4 — fork of exp_1 with a cheap LLM fallback for low-confidence crops.
+E2E experiment 5 — barcode-first, OCR-second resolution.
 
-Pipeline (identical to exp_1 through step 4):
-  1. Segment each input image into food-item crops (SegmentationService).
-  2. Save crops to a working output directory + a per-image QA overlay.
-  3. OCR each crop on-device (OCRService).
-  4. Resolve the OCR text to the top-N canonical matches (CanonicalizationService).
-  5. NEW — collect every crop whose best canonical match is below the confidence
-     threshold (default 40%) and send them as ONE batched Gemini 3.1 Flash Lite
-     call, passing the full canonical-name vocabulary. The model either:
-       - matches the crop to an existing canonical_name,
-       - proposes a brand-new food_reference row (printed as a dict, NOT written
-         to the DB), or
-       - returns unknown, leaving the crop marked unknown.
-  6. Render the HTML report, annotated with the LLM outcome per low-confidence crop.
+Fork of exp_4 that adds a global barcode pass in front of the OCR cascade. The
+insight: when a product's barcode is visible it is a near-perfect identity key
+(L1), so there is no need to OCR-and-fuzzy-match that crop at all.
+
+Pipeline:
+  1. Segment the image into food-item crops (SegmentationService / YOLOE).
+  2. Scan the WHOLE image once for barcodes (BarcodeService), keeping each
+     barcode's pixel bbox.
+  3. Spatially join barcodes to crops (associate_barcodes_to_crops) — tolerant
+     enough that a barcode on the side of a product still binds to the crop whose
+     front face was detected (overlap-over-barcode-area + expanded-box center).
+  4. For each crop:
+       - if a barcode is associated:
+           → look the barcode up on Open Food Facts, take the product name,
+             canonicalize it (alias → lexical → fuzzy). Mark resolved via barcode;
+             SKIP OCR entirely. (If OFF has no record, fall back to the OCR path.)
+       - else:
+           → OCR → per-line canonicalization (same as exp_4).
+  5. LLM fallback (one batched Gemini call) for everything still low-confidence —
+     this covers OCR crops AND barcode crops whose OFF name didn't canonicalize.
+  6. Render the HTML report, annotated with barcode / OCR / LLM provenance.
 
 Run from this directory:
-    ../.venv/bin/python exp_4.py
+    ../.venv/bin/python exp_5.py
 
-Requires GEMINI_API_KEY in the environment (or .env). Without it, step 5 is
-skipped and low-confidence crops are simply marked unknown.
+Requires SUPABASE_URL / SUPABASE_KEY (canonical vocab) and, for step 5,
+GEMINI_API_KEY in the environment (or .env). Open Food Facts needs no key.
 """
 
 from __future__ import annotations
@@ -36,13 +44,14 @@ from dotenv import load_dotenv
 SRC_ROOT = Path(__file__).resolve().parent.parent          # .../experiments/src
 EXPERIMENTS_ROOT = SRC_ROOT.parent                          # .../experiments
 DATA_ROOT = EXPERIMENTS_ROOT / "data"
-for service_dir in ("segmentation_service", "ocr_service", "canonicalization_service"):
+for service_dir in ("segmentation_service", "ocr_service", "canonicalization_service", "barcode_service"):
     sys.path.insert(0, str(SRC_ROOT / service_dir))
 
 from segmentation import Detection, SegmentationService          # noqa: E402
 from ocr import OCRService, prominence_weights                   # noqa: E402
 from canonicalization import (                                   # noqa: E402
     CanonicalizationService,
+    Candidate,
     CoarseType,
     InflowSource,
     LineInput,
@@ -52,6 +61,8 @@ from constants import (                                          # noqa: E402
     MAX_COMBINE_SIZE,
     SMALL_TEXT_PENALTY,
 )
+from barcode import BarcodeService, associate_barcodes_to_crops  # noqa: E402
+from openfoodfacts import OpenFoodFactsClient                    # noqa: E402
 from report import MatchRow, ReportItem, render_report           # noqa: E402
 from gemini_resolver import (                                    # noqa: E402
     GeminiResolver,
@@ -66,24 +77,26 @@ from gemini_resolver import (                                    # noqa: E402
 class ExperimentConfig:
     input_dir: Path = DATA_ROOT / "cv_input"
     crops_dir: Path = DATA_ROOT / "work" / "crops"
-    report_path: Path = DATA_ROOT / "work" / "exp_4_report.html"
+    report_path: Path = DATA_ROOT / "work" / "exp_5_report.html"
     model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg.pt"
     # model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg-pf.pt"
     # classes: tuple[str, ...] = tuple()
-    classes: tuple[str, ...] = ("product", "produce", "bottle", "bag", "packet", "object", "box", "cardboard box", "carton", "jar", "can", "tin", "canned food", "pouch", "plastic pouch", "sachet", "sack", "plastic bag", "clear plastic bag", "ziplock bag", "tub", "container")
+    classes: tuple[str, ...] = ("product", "produce", "bottle")
     confidence_threshold: float = 0.4
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN
-    # Per-line OCR resolution: forward at most this many of the most-prominent
-    # lines (None = all), and how hard to penalize small text (0..1).
+    # Per-line OCR resolution (same knobs as exp_4).
     top_n_lines: Optional[int] = None
     small_text_penalty: float = SMALL_TEXT_PENALTY
-    # Multi-line name recombination (joins of the top-K prominent lines).
     max_combine_lines: int = MAX_COMBINE_LINES
     max_combine_size: int = MAX_COMBINE_SIZE
-    # NEW — crops whose best deterministic match scores below this are sent to
-    # the LLM fallback. "confidence less than 40%".
+    # LLM fallback: crops whose best deterministic match is below this go to Gemini.
     llm_fallback_threshold: float = 0.40
+    # Barcode → crop spatial join tolerance. A barcode binds to a crop when the
+    # barcode center is inside the crop box grown by `barcode_margin_frac`, OR at
+    # least `barcode_overlap_floor` of the barcode area overlaps the crop.
+    barcode_margin_frac: float = 0.15
+    barcode_overlap_floor: float = 0.30
 
 
 # Map coarse detector labels → canonicalization CoarseType (enables veto + boost).
@@ -96,7 +109,18 @@ def _coarse_type_for(label: str) -> Optional[CoarseType]:
     return _LABEL_TO_COARSE.get(label.lower())
 
 
-# --------------------------------------------------------------------------- pipeline
+def _box_key(item: ReportItem) -> str:
+    """Stable id for a crop across the deterministic and LLM passes."""
+    return item.crop_path.stem
+
+
+def _save_crop(det: Detection, source_name: str, crops_dir: Path) -> Path:
+    crop_path = crops_dir / f"{Path(source_name).stem}_box_{det.box_id}.jpg"
+    cv2.imwrite(str(crop_path), det.crop)
+    return crop_path
+
+
+# --------------------------------------------------------------------------- OCR path
 
 def _process_detection(
     det: Detection,
@@ -106,11 +130,10 @@ def _process_detection(
     canon: CanonicalizationService,
     cfg: ExperimentConfig,
 ) -> ReportItem:
-    crop_path = crops_dir / f"{Path(source_name).stem}_box_{det.box_id}.jpg"
-    cv2.imwrite(str(crop_path), det.crop)
+    """OCR → per-line canonicalization for a crop with no associated barcode.
+    (Identical to exp_4's OCR path.)"""
+    crop_path = _save_crop(det, source_name, crops_dir)
 
-    # Keep Vision's per-line structure (bbox prominence + reading order) instead
-    # of collapsing it into one blob — see canon.resolve_top_n_lines for why.
     observations = ocr.read_observations(crop_path)
     weights = prominence_weights(observations)
     lines = [
@@ -118,11 +141,9 @@ def _process_detection(
         for i, (obs, prominence) in enumerate(zip(observations, weights))
         if obs.text.strip()
     ]
-    # Optional hard cap on forwarded lines (top-N by prominence), order preserved.
     if cfg.top_n_lines is not None and len(lines) > cfg.top_n_lines:
         keep = {l.order for l in sorted(lines, key=lambda l: l.prominence, reverse=True)[:cfg.top_n_lines]}
         lines = [l for l in lines if l.order in keep]
-    # Display string lists lines tallest-first.
     ocr_text = " | ".join(l.text for l in sorted(lines, key=lambda l: l.prominence, reverse=True))
 
     candidates = canon.resolve_top_n_lines(
@@ -146,23 +167,69 @@ def _process_detection(
     )
 
 
-def _box_key(item: ReportItem) -> str:
-    """Stable id for a crop across the deterministic and LLM passes."""
-    return item.crop_path.stem
+# --------------------------------------------------------------------------- barcode path
 
+def _process_barcode_detection(
+    det: Detection,
+    barcode_value: str,
+    source_name: str,
+    crops_dir: Path,
+    off: OpenFoodFactsClient,
+    canon: CanonicalizationService,
+    cfg: ExperimentConfig,
+) -> Optional[ReportItem]:
+    """Resolve a crop via its barcode: barcode → Open Food Facts name →
+    canonicalization. OCR is skipped. Returns None when OFF has no usable record
+    so the caller can fall back to the OCR path.
+
+    The OFF product name is placed in `ocr_text` so the shared LLM fallback can
+    pick this crop up if the name didn't canonicalize confidently.
+    """
+    crop_path = _save_crop(det, source_name, crops_dir)
+    product = off.lookup(barcode_value)
+    name = product.best_name if product else None
+    if not name:
+        return None  # no OFF match → let the caller OCR this crop instead
+
+    candidates = canon.resolve_top_n(
+        name,
+        n=cfg.top_n,
+        source=InflowSource.BARCODE,
+        coarse_type=_coarse_type_for(det.label),
+        brand_hint=product.brand_hint,
+    )
+    rows = [MatchRow(c.canonical_name, c.display_name, c.score) for c in candidates]
+
+    top = rows[0] if rows else None
+    if top is not None:
+        note = f"OFF '{name}' → {top.display_name} ({top.canonical_name}) @ {top.score:.2f}"
+    else:
+        note = f"OFF '{name}' → no canonical match (LLM fallback)"
+
+    return ReportItem(
+        source_image=source_name,
+        crop_path=crop_path,
+        label=det.label,
+        confidence=det.confidence,
+        ocr_text=name,            # OFF name feeds the LLM fallback if low-confidence
+        candidates=rows,
+        barcode=barcode_value,
+        barcode_note=note,
+    )
+
+
+# --------------------------------------------------------------------------- LLM fallback
 
 def _llm_fallback(
     items: list[ReportItem],
     canon: CanonicalizationService,
     cfg: ExperimentConfig,
 ) -> None:
-    """Step 5 — batch the low-confidence crops through Gemini and apply results.
+    """Batch every still-low-confidence crop through Gemini (one call).
 
-    Low confidence = best deterministic candidate scores below the threshold
-    (this also covers crops with no candidates at all). Mutates `items` in place,
-    annotating each with the LLM outcome and, for matches, prepending the
-    LLM-chosen canonical as the new top candidate. New food_reference rows are
-    printed as dicts but never written to the DB.
+    Low confidence = best deterministic candidate below the threshold (covers
+    crops with no candidates, OCR crops, and barcode crops whose OFF name didn't
+    canonicalize). Mutates `items` in place. (Same behaviour as exp_4.)
     """
     low_conf = [
         it for it in items
@@ -198,7 +265,6 @@ def _llm_fallback(
 
         if res.status is LLMStatus.MATCHED:
             display = display_by_canonical.get(res.canonical_name, res.canonical_name)
-            # Surface the LLM choice as the new top candidate for the report.
             it.candidates = [MatchRow(res.canonical_name, display, res.confidence), *it.candidates]
             it.llm_note = f"matched → {display} ({res.canonical_name}) @ {res.confidence:.2f}"
             print(f"   {_box_key(it):<28} ocr='{it.ocr_text[:34]}'  -> MATCH {res.canonical_name} ({res.confidence:.2f})")
@@ -217,13 +283,17 @@ def _llm_fallback(
             print(f"   {_box_key(it):<28} ocr='{it.ocr_text[:34]}'  -> NOT FOOD ({res.confidence:.2f})")
 
 
+# --------------------------------------------------------------------------- run
+
 def run(cfg: ExperimentConfig) -> list[ReportItem]:
     cfg.crops_dir.mkdir(parents=True, exist_ok=True)
 
     segmenter = SegmentationService(
         cfg.model_path, classes=cfg.classes, confidence_threshold=cfg.confidence_threshold
     )
+    barcode_svc = BarcodeService()
     ocr = OCRService()
+    off = OpenFoodFactsClient()
     canon = CanonicalizationService.from_supabase()
 
     image_paths = segmenter.list_images(cfg.input_dir)
@@ -243,17 +313,41 @@ def run(cfg: ExperimentConfig) -> list[ReportItem]:
             print("   no items detected")
             continue
 
+        # Global barcode pass + tolerant spatial join to crops.
+        barcodes = barcode_svc.scan_array(image)
+        assoc = associate_barcodes_to_crops(
+            barcodes, detections,
+            margin_frac=cfg.barcode_margin_frac,
+            overlap_floor=cfg.barcode_overlap_floor,
+        )
+        print(f"   {len(barcodes)} barcode(s) decoded, {len(assoc)} joined to crops")
+
         overlay = segmenter.draw_overlay(image, detections)
+        overlay = barcode_svc.draw_overlay(overlay, barcodes)
         cv2.imwrite(str(cfg.crops_dir / f"QA_OVERLAY_{img_path.name}"), overlay)
 
         for det in detections:
-            item = _process_detection(det, img_path.name, cfg.crops_dir, ocr, canon, cfg)
+            bc = assoc.get(det.box_id)
+            if bc is not None:
+                item = _process_barcode_detection(
+                    det, bc.value, img_path.name, cfg.crops_dir, off, canon, cfg
+                )
+                if item is None:
+                    # OFF had no record — fall back to OCR but keep the barcode note.
+                    item = _process_detection(det, img_path.name, cfg.crops_dir, ocr, canon, cfg)
+                    item.barcode = bc.value
+                    item.barcode_note = "no Open Food Facts match — OCR fallback"
+                route = f"BARCODE {bc.value}"
+            else:
+                item = _process_detection(det, img_path.name, cfg.crops_dir, ocr, canon, cfg)
+                route = f"ocr='{item.ocr_text[:34]}'"
+
             top = item.candidates[0] if item.candidates else None
             best = f"{top.display_name} ({top.score:.2f})" if top else "—"
-            print(f"   box {det.box_id:>2} [{det.label}]  ocr='{item.ocr_text[:40]}'  -> {best}")
+            print(f"   box {det.box_id:>2} [{det.label}]  {route}  -> {best}")
             items.append(item)
 
-    # Step 5 — LLM fallback for everything the deterministic cascade was unsure of.
+    # LLM fallback for everything the deterministic cascade was unsure of.
     _llm_fallback(items, canon, cfg)
 
     return items
@@ -265,7 +359,10 @@ def main() -> None:
     items = run(cfg)
     if not items:
         return
-    report = render_report(items, cfg.report_path, title="E2E Exp 4 — Crop → OCR → Canonical (+ LLM fallback)")
+    report = render_report(
+        items, cfg.report_path,
+        title="E2E Exp 5 — Barcode-first → OFF → Canonical (+ OCR / LLM fallback)",
+    )
     print("\n" + "=" * 50)
     print(f"Processed {len(items)} items. Report: {report}")
 

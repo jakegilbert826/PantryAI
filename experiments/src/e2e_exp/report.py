@@ -34,6 +34,11 @@ class ReportItem:
     candidates: Sequence[MatchRow]
     # Optional note describing an LLM fallback outcome for low-confidence crops.
     llm_note: str | None = None
+    # Optional barcode info: the decoded value, and a note on how it resolved
+    # (Open Food Facts name + canonicalization). Set when a barcode was joined
+    # to this crop, in which case OCR is skipped.
+    barcode: str | None = None
+    barcode_note: str | None = None
 
 
 def _img_data_uri(path: Path) -> str:
@@ -75,6 +80,15 @@ def _card(item: ReportItem) -> str:
         if item.llm_note
         else ""
     )
+    barcode = (
+        f"<div class='ocr'><span class='tag' style='background:#a33'>BARCODE</span>"
+        f"{html.escape(item.barcode)}"
+        f"{' — ' + html.escape(item.barcode_note) if item.barcode_note else ''}</div>"
+        if item.barcode
+        else ""
+    )
+    # Barcode crops skip OCR; show the barcode chip in place of the OCR line.
+    primary = barcode if item.barcode else f"<div class='ocr'><span class='tag'>OCR</span>{ocr}</div>"
     return f"""
     <div class="card">
       <div class="crop">
@@ -86,7 +100,7 @@ def _card(item: ReportItem) -> str:
         <div class="src">{html.escape(item.source_image)}</div>
       </div>
       <div class="detail">
-        <div class="ocr"><span class="tag">OCR</span>{ocr}</div>
+        {primary}
         {_candidates_table(item.candidates)}
         {llm}
       </div>

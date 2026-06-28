@@ -15,3 +15,8 @@ data/
 *.onnx
 *.mlmodel
 *.mlpackage
+
+# Output images
+*.jpg
+*.jpeg
+*.png
