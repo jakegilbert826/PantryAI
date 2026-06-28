@@ -5,7 +5,9 @@ When the deterministic alias → lexical → fuzzy cascade resolves a crop with 
 confidence, we hand the OCR text to a small/fast LLM (Gemini 3.1 Flash Lite)
 together with the full list of canonical names from the food_reference table and
 ask it to pick exactly one — or, if the food genuinely isn't in the table, to
-propose a new food_reference row. All low-confidence boxes go out in ONE call to
+propose a new food_reference row. It can also flag an item as non-food (e.g.
+vitamins, cleaning products commonly found in a kitchen cupboard) so it isn't
+forced into the food vocabulary. All low-confidence boxes go out in ONE call to
 keep the cost down (the canonical vocabulary is sent once, not per box).
 
 This module is provider-specific (Google Gemini) and uses the REST API directly
@@ -26,16 +28,17 @@ import requests
 
 # The user asked specifically for Gemini 3.1 Flash Lite. Kept as a constant so a
 # different cheap model can be swapped in without touching the call site.
-# GEMINI_MODEL = "gemini-3.1-flash-lite"
-GEMINI_MODEL = "gemini-3.1-pro-preview"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+# GEMINI_MODEL = "gemini-3.1-pro-preview"
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 _TIMEOUT_S = 60
 
 
 class LLMStatus(str, Enum):
-    MATCHED = "matched"   # resolved to an existing canonical_name
-    NEW = "new"           # a real food, but not in food_reference -> propose a row
-    UNKNOWN = "unknown"   # could not resolve with any confidence
+    MATCHED = "matched"     # resolved to an existing canonical_name
+    NEW = "new"             # a real food, but not in food_reference -> propose a row
+    NOT_FOOD = "not_food"   # confidently identified as a non-food item (e.g. vitamins, cleaning products)
+    UNKNOWN = "unknown"     # could not resolve with any confidence
 
 
 @dataclass
@@ -87,9 +90,13 @@ _SYSTEM = (
     "Return that exact canonical_name.\n"
     "  - new: you can confidently identify the food, but NO canonical_name in the "
     "vocabulary fits. Propose a new food_reference row.\n"
-    "  - unknown: the OCR is too garbled / generic to identify the food at all.\n"
+    "  - not_food: you can confidently tell the item is NOT a food or drink at all "
+    "(e.g. vitamins, supplements, medicines, cleaning products, pet food, toiletries) "
+    "— common in a kitchen cupboard. Do not force it into the food vocabulary.\n"
+    "  - unknown: the OCR is too garbled / generic to identify the item at all.\n"
     "Only use canonical_name values that appear verbatim in the provided vocabulary "
-    "when status is matched. Try hard to make a guess and leave few unknown"
+    "when status is matched. Try hard to make a guess and leave few unknown, but use "
+    "not_food rather than guessing a food when the item is clearly non-food."
 )
 
 # Structured output: an array of per-box decisions. Gemini honors responseSchema.
@@ -102,7 +109,7 @@ _RESPONSE_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "box_id": {"type": "string"},
-                    "status": {"type": "string", "enum": ["matched", "new", "unknown"]},
+                    "status": {"type": "string", "enum": ["matched", "new", "not_food", "unknown"]},
                     "confidence": {"type": "number"},
                     "canonical_name": {"type": "string"},
                     "new_entry": {
@@ -242,6 +249,8 @@ class GeminiResolver:
                     )
                 else:
                     out[box_id] = LLMResolution(box_id, LLMStatus.UNKNOWN, 0.0)
+            elif status is LLMStatus.NOT_FOOD:
+                out[box_id] = LLMResolution(box_id, LLMStatus.NOT_FOOD, conf)
             else:
                 out[box_id] = LLMResolution(box_id, LLMStatus.UNKNOWN, conf)
         return out

@@ -67,10 +67,11 @@ class ExperimentConfig:
     input_dir: Path = DATA_ROOT / "cv_input"
     crops_dir: Path = DATA_ROOT / "work" / "crops"
     report_path: Path = DATA_ROOT / "work" / "exp_4_report.html"
+    model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg.pt"
     model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg-pf.pt"
     classes: tuple[str, ...] = tuple()
     # classes: tuple[str, ...] = ("product", "produce")
-    confidence_threshold: float = 0.25
+    confidence_threshold: float = 0.4
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN
     # Per-line OCR resolution: forward at most this many of the most-prominent
@@ -210,6 +211,10 @@ def _llm_fallback(
             )
             print(f"   {_box_key(it):<28} ocr='{it.ocr_text[:34]}'  -> NEW food_reference (not written to DB):")
             print(f"      {entry}")
+
+        elif res.status is LLMStatus.NOT_FOOD:
+            it.llm_note = f"not food — skipped @ {res.confidence:.2f}"
+            print(f"   {_box_key(it):<28} ocr='{it.ocr_text[:34]}'  -> NOT FOOD ({res.confidence:.2f})")
 
 
 def run(cfg: ExperimentConfig) -> list[ReportItem]:
