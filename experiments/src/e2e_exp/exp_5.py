@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
+import numpy as np
 from dotenv import load_dotenv
 
 # Make the sibling service packages importable regardless of CWD.
@@ -61,7 +62,7 @@ from constants import (                                          # noqa: E402
     MAX_COMBINE_SIZE,
     SMALL_TEXT_PENALTY,
 )
-from barcode import BarcodeService, associate_barcodes_to_crops  # noqa: E402
+from barcode import BarcodeService, BarcodeDetection, associate_barcodes_to_crops  # noqa: E402
 from openfoodfacts import OpenFoodFactsClient                    # noqa: E402
 from report import MatchRow, ReportItem, render_report           # noqa: E402
 from gemini_resolver import (                                    # noqa: E402
@@ -81,8 +82,8 @@ class ExperimentConfig:
     model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg.pt"
     # model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg-pf.pt"
     # classes: tuple[str, ...] = tuple()
-    classes: tuple[str, ...] = ("product", "produce", "bottle")
-    confidence_threshold: float = 0.4
+    classes: tuple[str, ...] = ("product", "produce", "bottle", "bag", "packet", "object", "box", "cardboard box", "carton", "jar", "can", "tin", "canned food", "pouch", "plastic pouch", "sachet", "sack", "plastic bag", "clear plastic bag", "ziplock bag", "tub", "container", "fruit", "vegetable")
+    confidence_threshold: float = 0.2
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN
     # Per-line OCR resolution (same knobs as exp_4).
@@ -218,6 +219,66 @@ def _process_barcode_detection(
     )
 
 
+# --------------------------------------------------------------------------- orphan barcodes
+
+def _process_orphan_barcode(
+    bc: BarcodeDetection,
+    image: np.ndarray,
+    source_name: str,
+    crops_dir: Path,
+    off: OpenFoodFactsClient,
+    canon: CanonicalizationService,
+    cfg: ExperimentConfig,
+) -> Optional[ReportItem]:
+    """Resolve a barcode that didn't match any YOLOE crop.
+
+    Hard rule: if OFF has a usable record, this item always makes it to the
+    output regardless of whether YOLOE detected the product. The barcode's own
+    bbox (padded slightly) is saved as the representative crop image.
+    Returns None if OFF has no record for this barcode.
+    """
+    product = off.lookup(bc.value)
+    name = product.best_name if product else None
+    if not name:
+        return None
+
+    h, w = image.shape[:2]
+    xmin, ymin, xmax, ymax = bc.bbox
+    pad = 20
+    crop_img = image[
+        max(0, ymin - pad):min(h, ymax + pad),
+        max(0, xmin - pad):min(w, xmax + pad),
+    ]
+    crop_path = crops_dir / f"{Path(source_name).stem}_barcode_{bc.value}.jpg"
+    cv2.imwrite(str(crop_path), crop_img)
+
+    candidates = canon.resolve_top_n(
+        name,
+        n=cfg.top_n,
+        source=InflowSource.BARCODE,
+        coarse_type=None,
+        brand_hint=product.brand_hint,
+    )
+    rows = [MatchRow(c.canonical_name, c.display_name, c.score) for c in candidates]
+    top = rows[0] if rows else None
+    note = (
+        f"OFF '{name}' → {top.display_name} ({top.canonical_name}) @ {top.score:.2f} [no YOLOE crop]"
+        if top else
+        f"OFF '{name}' → no canonical match [no YOLOE crop]"
+    )
+
+    return ReportItem(
+        source_image=source_name,
+        crop_path=crop_path,
+        label="barcode",
+        confidence=1.0,
+        ocr_text=name,
+        candidates=rows,
+        barcode=bc.value,
+        barcode_note=note,
+    )
+
+
 # --------------------------------------------------------------------------- LLM fallback
 
 def _llm_fallback(
@@ -309,12 +370,23 @@ def run(cfg: ExperimentConfig) -> list[ReportItem]:
         image = segmenter.read(img_path)
         detections = segmenter.segment_array(image, source=str(img_path))
 
+        # Barcode scan always runs — orphan barcodes with an OFF match must reach
+        # the output even when YOLOE found nothing.
+        barcodes = barcode_svc.scan_grid(image, grid_n=2)
+
         if not detections:
             print("   no items detected")
+            for bc in barcodes:
+                if not bc.spatial_reliable:
+                    continue
+                item = _process_orphan_barcode(bc, image, img_path.name, cfg.crops_dir, off, canon, cfg)
+                if item is not None:
+                    top = item.candidates[0] if item.candidates else None
+                    best = f"{top.display_name} ({top.score:.2f})" if top else "—"
+                    print(f"   orphan barcode {bc.value}  -> {best}")
+                    items.append(item)
             continue
 
-        # Global barcode pass + tolerant spatial join to crops.
-        barcodes = barcode_svc.scan_array(image)
         assoc = associate_barcodes_to_crops(
             barcodes, detections,
             margin_frac=cfg.barcode_margin_frac,
@@ -346,6 +418,19 @@ def run(cfg: ExperimentConfig) -> list[ReportItem]:
             best = f"{top.display_name} ({top.score:.2f})" if top else "—"
             print(f"   box {det.box_id:>2} [{det.label}]  {route}  -> {best}")
             items.append(item)
+
+        # Hard rule: barcodes not joined to any crop but resolved via OFF always
+        # make it to the output. The barcode's own bbox is used as the crop image.
+        matched_payloads = {bc.value for bc in assoc.values()}
+        for bc in barcodes:
+            if bc.value in matched_payloads or not bc.spatial_reliable:
+                continue
+            item = _process_orphan_barcode(bc, image, img_path.name, cfg.crops_dir, off, canon, cfg)
+            if item is not None:
+                top = item.candidates[0] if item.candidates else None
+                best = f"{top.display_name} ({top.score:.2f})" if top else "—"
+                print(f"   orphan barcode {bc.value}  -> {best}")
+                items.append(item)
 
     # LLM fallback for everything the deterministic cascade was unsure of.
     _llm_fallback(items, canon, cfg)

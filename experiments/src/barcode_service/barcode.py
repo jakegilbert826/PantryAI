@@ -3,9 +3,19 @@ Reusable barcode scanning service (Apple Vision).
 
 Detects and decodes 1-D product barcodes (EAN-13 / EAN-8 / UPC-A …) anywhere in
 an image using Vision's VNDetectBarcodesRequest — the same on-device framework
-the OCR service uses, and markedly more robust than OpenCV's barcode module. The
-whole frame is scanned once; the caller spatially joins the results to detector
-crops (see `associate_barcodes_to_crops`).
+the OCR service uses, and markedly more robust than OpenCV's barcode module.
+
+VNDetectBarcodesRequest does not internally retry orientations: for 1-D linear
+barcodes (EAN-13, UPC) the scanner looks for parallel lines along a fixed axis, so
+a barcode rotated 90° relative to the image frame can be missed entirely. QR codes
+and Data Matrix are rotation-invariant (finder patterns), so this is a 1-D-only
+issue — which is exactly the food product case.
+
+The service runs up to N orientation passes (default 4) and deduplicates by
+payload. Only barcodes detected in the Up (standard) pass get a reliable bbox;
+detections from rotated passes are marked `spatial_reliable=False` with a zeroed
+bbox — they contribute a payload for lookup but are excluded from spatial joins.
+The caller controls how many orientations to try via `n_orientations`.
 
 macOS-only (depends on the pyobjc Vision/Quartz bindings, as ocr.py does). Each
 barcode's bbox is returned in **pixel** coordinates with a top-left origin so it
@@ -19,8 +29,10 @@ short-lived temp file) rather than the original path, then flip Vision's y axis.
 Usage:
     from barcode import BarcodeService, associate_barcodes_to_crops
 
-    svc = BarcodeService()
-    barcodes = svc.scan("photo.jpg")                 # list[BarcodeDetection]
+    svc = BarcodeService()                           # 4-orientation scan (default)
+    svc = BarcodeService(n_orientations=1)           # Up only — fastest, no rotation recovery
+    barcodes = svc.scan("photo.jpg")                 # whole-image scan
+    barcodes = svc.scan_grid(image, grid_n=3)        # 3×3 tile scan; coords normalised to full image
     assoc = associate_barcodes_to_crops(barcodes, detections)  # {crop_box_id: BarcodeDetection}
 """
 
@@ -40,14 +52,24 @@ import Vision
 # (xmin, ymin, xmax, ymax) clipped to image, matching segmentation.Detection.bbox.
 BBox = tuple[int, int, int, int]
 
+# Ordered scan orientations: first N are used depending on n_orientations.
+# Up and Down cover the horizontal axis (0°/180°); Left and Right add the vertical axis.
+_SCAN_ORIENTATIONS = [
+    Quartz.kCGImagePropertyOrientationUp,     # 0° — standard; bbox reliable
+    Quartz.kCGImagePropertyOrientationDown,   # 180° — catches upside-down codes on same axis
+    Quartz.kCGImagePropertyOrientationLeft,   # 90° CCW — catches sideways 1-D barcodes
+    Quartz.kCGImagePropertyOrientationRight,  # 90° CW
+]
+
 
 @dataclass(frozen=True)
 class BarcodeDetection:
     """One decoded barcode: its value, symbology, and place in the frame."""
     value: str
-    symbology: str                 # e.g. "EAN13" / "UPCA" ("" if Vision didn't report)
-    bbox: BBox                     # axis-aligned, pixel coords, top-left origin
+    symbology: str                  # e.g. "EAN13" / "UPCA" ("" if Vision didn't report)
+    bbox: BBox                      # axis-aligned, pixel coords, top-left origin
     corners: tuple[tuple[int, int], ...]  # 4 quad vertices (axis-aligned from bbox)
+    spatial_reliable: bool = True   # False when bbox is from a rotated pass (wrong frame)
 
     @property
     def center(self) -> tuple[float, float]:
@@ -67,11 +89,19 @@ def _clean_symbology(raw: object) -> str:
 
 
 class BarcodeService:
-    """Runs Vision's barcode detector and exposes stateless scan helpers."""
+    """Runs Vision's barcode detector and exposes stateless scan helpers.
 
-    def __init__(self) -> None:
-        # Vision's request object is cheap; build one per scan to stay stateless.
-        pass
+    n_orientations controls how many CGImage orientation passes are attempted
+    (from the ordered list [Up, Down, Left, Right]). Barcode detection is
+    fast enough that four passes costs less than one OCR crop pass, so the
+    default is 4. Use 1 for Up-only if orientation is guaranteed or spatial
+    accuracy of every detection matters more than recall.
+    """
+
+    def __init__(self, n_orientations: int = 1) -> None:
+        if not 1 <= n_orientations <= 4:
+            raise ValueError(f"n_orientations must be 1–4, got {n_orientations}")
+        self._orientations = _SCAN_ORIENTATIONS[:n_orientations]
 
     # ------------------------------------------------------------------ I/O
 
@@ -95,49 +125,132 @@ class BarcodeService:
     def scan_array(self, image: np.ndarray) -> list[BarcodeDetection]:
         """Detect + decode every barcode in an in-memory BGR image.
 
-        Returns only barcodes that decoded to a non-empty payload (a detected but
-        undecodable code is useless for lookup). Vision needs a file/CGImage, so
-        the array is written to a short-lived temp file (also strips any EXIF, so
-        coordinates stay aligned with the cv2-read segmentation crops).
+        Runs `n_orientations` passes. Barcodes found in the Up (standard) pass
+        carry a reliable pixel bbox; those discovered only in a rotated pass are
+        marked `spatial_reliable=False` with a zeroed bbox — they provide a
+        payload for lookup but are skipped by `associate_barcodes_to_crops`.
+
+        Vision needs a file/CGImage, so the array is written to a short-lived
+        temp file (which also strips EXIF, keeping coords aligned with cv2 crops).
         """
         height, width = image.shape[:2]
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         tmp.close()
         try:
             cv2.imwrite(tmp.name, image)
-            observations = self._detect(tmp.name)
+            detections = self._detect_multi(tmp.name, width, height)
         finally:
             os.unlink(tmp.name)
-
-        detections: list[BarcodeDetection] = []
-        for obs in observations:
-            payload = obs.payloadStringValue()
-            if not payload:
-                continue  # detected a code but couldn't decode its payload
-            value = str(payload).strip()
-            if not value:
-                continue
-            detections.append(
-                BarcodeDetection(
-                    value=value,
-                    symbology=_clean_symbology(obs.symbology()),
-                    bbox=self._bbox_to_pixels(obs.boundingBox(), width, height),
-                    corners=tuple(),  # filled below from bbox
-                )
-            )
-        # Derive axis-aligned corners from the pixel bbox (for the QA overlay).
         return [self._with_corners(d) for d in detections]
 
-    @staticmethod
-    def _detect(image_path: str) -> list:
-        """Run VNDetectBarcodesRequest on a file path; return raw observations."""
+    def scan_grid(
+        self,
+        image: np.ndarray,
+        grid_n: int = 2,
+        overlap_frac: float = 0.1,
+    ) -> list[BarcodeDetection]:
+        """Scan a grid_n × grid_n tile partition of the image.
+
+        Addresses the case where barcodes are small relative to the full frame —
+        tiling gives Vision a higher effective resolution on each region. Each tile
+        is scanned with the full multi-orientation pass; detections are mapped back
+        to full-image pixel coordinates before deduplication.
+
+        Tiles overlap by `overlap_frac` of their size on each edge to reduce the
+        chance of a barcode being cut by a seam. A full-image pass is also run so
+        that any barcode wider than the overlap zone (and therefore still split
+        across both tiles) is always seen intact. Across all passes the detection
+        with the largest bbox area wins; non-spatial detections (rotated passes)
+        fall back to first-seen.
+        """
+        if grid_n == 1:
+            return self.scan_array(image)
+
+        height, width = image.shape[:2]
+        tile_w = width / grid_n
+        tile_h = height / grid_n
+
+        best: dict[str, BarcodeDetection] = {}  # payload -> best detection so far
+
+        def _merge(det: BarcodeDetection) -> None:
+            prev = best.get(det.value)
+            if prev is None or det.area > prev.area:
+                best[det.value] = det
+
+        # Full-image pass first: catches any barcode that spans a seam. Tile
+        # passes can only improve on this with a larger (more zoomed-in) bbox.
+        for det in self.scan_array(image):
+            _merge(det)
+
+        for row in range(grid_n):
+            for col in range(grid_n):
+                x0 = max(0, int(col * tile_w - overlap_frac * tile_w))
+                y0 = max(0, int(row * tile_h - overlap_frac * tile_h))
+                x1 = min(width, int((col + 1) * tile_w + overlap_frac * tile_w))
+                y1 = min(height, int((row + 1) * tile_h + overlap_frac * tile_h))
+
+                for det in self.scan_array(image[y0:y1, x0:x1]):
+                    if det.spatial_reliable:
+                        bx0, by0, bx1, by1 = det.bbox
+                        full_bbox: BBox = (bx0 + x0, by0 + y0, bx1 + x0, by1 + y0)
+                        full_corners = tuple(
+                            (cx + x0, cy + y0) for cx, cy in det.corners
+                        )
+                        det = BarcodeDetection(
+                            det.value, det.symbology, full_bbox, full_corners, True
+                        )
+                    _merge(det)
+
+        return list(best.values())
+
+    def _detect_multi(self, image_path: str, width: int, height: int) -> list[BarcodeDetection]:
+        """Run VNDetectBarcodesRequest for each configured orientation.
+
+        Deduplicates by payload across passes. The Up pass is always attempted
+        first (it is position 0 in _SCAN_ORIENTATIONS) so that, when a barcode
+        is visible in multiple orientations, the reliable bbox is recorded.
+        """
         url = Quartz.CFURLCreateFromFileSystemRepresentation(
             None, image_path.encode(), len(image_path), False
         )
-        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(url, {})
-        request = Vision.VNDetectBarcodesRequest.alloc().init()
-        handler.performRequests_error_([request], None)
-        return list(request.results() or [])
+        up_orientation = Quartz.kCGImagePropertyOrientationUp
+        seen: set[str] = set()
+        detections: list[BarcodeDetection] = []
+
+        for orientation in self._orientations:
+            handler = Vision.VNImageRequestHandler.alloc().initWithURL_orientation_options_(
+                url, orientation, {}
+            )
+            request = Vision.VNDetectBarcodesRequest.alloc().init()
+            handler.performRequests_error_([request], None)
+
+            for obs in (request.results() or []):
+                payload = obs.payloadStringValue()
+                if not payload:
+                    continue
+                value = str(payload).strip()
+                if not value or value in seen:
+                    continue
+                seen.add(value)
+
+                # Bbox from a rotated pass is in the rotated frame — unusable for
+                # spatial join without a coordinate transform. Record it as zeroed
+                # and let the caller decide based on spatial_reliable.
+                spatial_reliable = (orientation == up_orientation)
+                bbox: BBox = (
+                    self._bbox_to_pixels(obs.boundingBox(), width, height)
+                    if spatial_reliable
+                    else (0, 0, 0, 0)
+                )
+                detections.append(BarcodeDetection(
+                    value=value,
+                    symbology=_clean_symbology(obs.symbology()),
+                    bbox=bbox,
+                    corners=tuple(),
+                    spatial_reliable=spatial_reliable,
+                ))
+
+        return detections
 
     @staticmethod
     def _bbox_to_pixels(box, width: int, height: int) -> BBox:
@@ -160,7 +273,7 @@ class BarcodeService:
     def _with_corners(d: BarcodeDetection) -> BarcodeDetection:
         xmin, ymin, xmax, ymax = d.bbox
         corners = ((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax))
-        return BarcodeDetection(d.value, d.symbology, d.bbox, corners)
+        return BarcodeDetection(d.value, d.symbology, d.bbox, corners, d.spatial_reliable)
 
     # -------------------------------------------------------------- drawing
 
@@ -241,6 +354,8 @@ def associate_barcodes_to_crops(
     assigned: dict[int, tuple[float, BarcodeDetection]] = {}  # box_id -> (overlap, barcode)
 
     for bc in barcodes:
+        if not bc.spatial_reliable:
+            continue  # bbox is in a rotated frame; can't do a meaningful spatial join
         best_crop: Optional["Detection"] = None
         best_overlap = -1.0
         for crop in crops:

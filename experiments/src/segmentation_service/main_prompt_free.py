@@ -8,7 +8,7 @@ from ultralytics import YOLOE
 DATA = Path(__file__).resolve().parents[2] / "data"  # .../experiments/data
 IMAGE_DIR = str(DATA / "cv_input")  # Folder containing your test pictures
 OUTPUT_DIR = str(DATA / "cv_output")  # Where the isolated items will be saved
-CONFIDENCE_THRESHOLD = 0.4  # Adjust this to filter out noise or catch more items
+CONFIDENCE_THRESHOLD = 0.25  # Adjust this to filter out noise or catch more items
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

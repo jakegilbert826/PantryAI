@@ -95,7 +95,7 @@ _SYSTEM = (
     "— common in a kitchen cupboard. Do not force it into the food vocabulary.\n"
     "  - unknown: the OCR is too garbled / generic to identify the item at all.\n"
     "Only use canonical_name values that appear verbatim in the provided vocabulary "
-    "when status is matched. Try hard to make a guess and leave few unknown, but use "
+    "when status is matched. Try hard to make a guess, but use "
     "not_food rather than guessing a food when the item is clearly non-food."
 )
 
