@@ -70,7 +70,7 @@ class ExperimentConfig:
     model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg.pt"
     # model_path: Path = DATA_ROOT / "models" / "yoloe-26n-seg-pf.pt"
     # classes: tuple[str, ...] = tuple()
-    classes: tuple[str, ...] = ("product", "produce", "bottle", "bag", "packet", "object", "box", "cardboard box", "carton", "jar", "can", "tin", "canned food", "pouch", "plastic pouch", "sachet", "sack", "plastic bag", "clear plastic bag", "ziplock bag", "tub", "container")
+    classes: tuple[str, ...] = ("product", "produce", "bottle", "bag", "packet", "object", "box", "cardboard box", "carton", "jar", "can", "tin", "canned food", "pouch", "plastic pouch", "sachet", "sack", "plastic bag", "clear plastic bag", "ziplock bag", "tub", "container", "fruit", "vegetable")
     confidence_threshold: float = 0.4
     top_n: int = 5
     source: InflowSource = InflowSource.PANTRY_SCAN

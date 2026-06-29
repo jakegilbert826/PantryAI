@@ -146,7 +146,7 @@ class BarcodeService:
     def scan_grid(
         self,
         image: np.ndarray,
-        grid_n: int,
+        grid_n: int = 2,
         overlap_frac: float = 0.1,
     ) -> list[BarcodeDetection]:
         """Scan a grid_n × grid_n tile partition of the image.
@@ -156,10 +156,12 @@ class BarcodeService:
         is scanned with the full multi-orientation pass; detections are mapped back
         to full-image pixel coordinates before deduplication.
 
-        Tiles overlap by `overlap_frac` of their size on each edge to avoid missing
-        barcodes that straddle a boundary. Across tiles, the detection with the
-        largest bbox area wins (most completely captured); non-spatial detections
-        (rotated passes) fall back to first-seen.
+        Tiles overlap by `overlap_frac` of their size on each edge to reduce the
+        chance of a barcode being cut by a seam. A full-image pass is also run so
+        that any barcode wider than the overlap zone (and therefore still split
+        across both tiles) is always seen intact. Across all passes the detection
+        with the largest bbox area wins; non-spatial detections (rotated passes)
+        fall back to first-seen.
         """
         if grid_n == 1:
             return self.scan_array(image)
@@ -169,6 +171,16 @@ class BarcodeService:
         tile_h = height / grid_n
 
         best: dict[str, BarcodeDetection] = {}  # payload -> best detection so far
+
+        def _merge(det: BarcodeDetection) -> None:
+            prev = best.get(det.value)
+            if prev is None or det.area > prev.area:
+                best[det.value] = det
+
+        # Full-image pass first: catches any barcode that spans a seam. Tile
+        # passes can only improve on this with a larger (more zoomed-in) bbox.
+        for det in self.scan_array(image):
+            _merge(det)
 
         for row in range(grid_n):
             for col in range(grid_n):
@@ -187,10 +199,7 @@ class BarcodeService:
                         det = BarcodeDetection(
                             det.value, det.symbology, full_bbox, full_corners, True
                         )
-
-                    prev = best.get(det.value)
-                    if prev is None or det.area > prev.area:
-                        best[det.value] = det
+                    _merge(det)
 
         return list(best.values())
 

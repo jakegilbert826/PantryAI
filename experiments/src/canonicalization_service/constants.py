@@ -20,6 +20,25 @@ STORE_CODE_PATTERN       = re.compile(r"(?:^|\s)\d{3,}(?:\s|$)")
 NON_ALPHANUMERIC_PATTERN = re.compile(r"[^a-z0-9 ]")
 WHITESPACE_PATTERN       = re.compile(r"\s+")
 
+# Tokens that appear on nutrition panels / label boilerplate but are never
+# stand-alone food names. These are stripped from a query before it enters
+# the canonicalization cascade; the query is dropped entirely if fewer than
+# 3 non-whitespace characters remain after stripping.
+NUTRITION_LABEL_STOPWORDS: frozenset[str] = frozenset({
+    # Nutrition panel prepositions / headers
+    "per", "serving", "servings",
+    "nutrition", "nutritional", "information",
+    # Nutrient names (not pantry items)
+    "energy", "protein", "fat", "saturated",
+    "carbohydrate", "carbohydrates",
+    "dietary", "fibre", "fiber", "sodium",
+    # Quantitative label words
+    "total", "average", "quantity", "avg", "qty",
+    # Packaging / label boilerplate
+    "ingredients", "contains", "allergens",
+    "storage", "instructions", "directions",
+})
+
 # ---------------------------------------------------------------------------
 # Text normalization — merchant abbreviation expansion (receipt OCR / email)
 # ---------------------------------------------------------------------------

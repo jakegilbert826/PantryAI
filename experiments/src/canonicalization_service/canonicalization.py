@@ -41,6 +41,7 @@ from constants import (
     MAX_COMBINE_TOKENS,
     MERCHANT_ABBREVIATIONS,
     NON_ALPHANUMERIC_PATTERN,
+    NUTRITION_LABEL_STOPWORDS,
     PACK_SIZE_PATTERNS,
     SMALL_TEXT_PENALTY,
     STORE_CODE_PATTERN,
@@ -265,7 +266,14 @@ def _token_set_dice(a: str, b: str) -> float:
     ta, tb = set(a.split()), set(b.split())
     if not ta or not tb:
         return 0.0
-    return 2.0 * len(ta & tb) / (len(ta) + len(tb))
+    shared = ta & tb
+    if not shared:
+        return 0.0
+    # Weight each token by character length: matching "capsicum" (8 chars)
+    # is stronger evidence than matching "pp" (2 chars).
+    shared_w = sum(len(t) for t in shared)
+    total_w  = sum(len(t) for t in ta) + sum(len(t) for t in tb)
+    return 2.0 * shared_w / total_w
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -575,11 +583,22 @@ class CanonicalizationService:
 
         def _add_query(text: str, prominence: float) -> None:
             key = normalize(text, source)
-            if not key or key in resolved:
+            if not key:
                 return
-            resolved.add(key)
+            # Strip nutrition-label stopwords and bare numbers, then drop the
+            # query if fewer than 3 non-whitespace characters remain. This
+            # prevents tokens like "per" (from "per 100g" after pack-size
+            # stripping) from producing spurious fuzzy matches (e.g. "pear").
+            tokens = key.split()
+            cleaned_tokens = [t for t in tokens if t not in NUTRITION_LABEL_STOPWORDS and not t.isdigit()]
+            cleaned_key = " ".join(cleaned_tokens)
+            if len(cleaned_key.replace(" ", "")) < 3:
+                return
+            if cleaned_key in resolved:
+                return
+            resolved.add(cleaned_key)
             factor = 1.0 - small_text_penalty * (1.0 - prominence)
-            for c in self.resolve_top_n(text, n, source, coarse_type):
+            for c in self.resolve_top_n(cleaned_key, n, source, coarse_type):
                 weighted = c.score * factor
                 existing = seen.get(c.canonical_name)
                 if existing is None or existing.score < weighted:
